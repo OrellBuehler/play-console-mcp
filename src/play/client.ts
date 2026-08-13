@@ -1,20 +1,25 @@
 import type { TokenProvider } from "./auth.js";
 
 export const PUBLISHER_BASE_URL = "https://androidpublisher.googleapis.com/androidpublisher/v3";
+export const PUBLISHER_UPLOAD_BASE_URL =
+  "https://androidpublisher.googleapis.com/upload/androidpublisher/v3";
 export const REPORTING_BASE_URL = "https://playdeveloperreporting.googleapis.com/v1beta1";
 
 export type QueryParams = Record<string, string | number | boolean | string[] | undefined>;
 
 export class GooglePlayClient {
   readonly baseUrl: string;
+  readonly uploadBaseUrl: string;
   readonly timeoutMs: number;
 
   constructor(
     private tokenProvider: TokenProvider,
     baseUrl: string = PUBLISHER_BASE_URL,
     timeoutMs = 30000,
+    uploadBaseUrl: string = PUBLISHER_UPLOAD_BASE_URL,
   ) {
     this.baseUrl = baseUrl;
+    this.uploadBaseUrl = uploadBaseUrl;
     this.timeoutMs = timeoutMs;
   }
 
@@ -82,8 +87,31 @@ export class GooglePlayClient {
     return this.parseMaybeEmpty<T>(res);
   }
 
+  async patch<T>(path: string, body: unknown, params?: QueryParams): Promise<T> {
+    const res = await this.request(this.buildUrl(path, params), {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    });
+    return this.parseMaybeEmpty<T>(res);
+  }
+
   async del(path: string, params?: QueryParams): Promise<void> {
     await this.request(this.buildUrl(path, params), { method: "DELETE" });
+  }
+
+  async upload<T>(
+    path: string,
+    bytes: Uint8Array,
+    contentType: string,
+    params?: QueryParams,
+  ): Promise<T> {
+    const url = this.buildUrl(`${this.uploadBaseUrl}${path}`, { ...params, uploadType: "media" });
+    const res = await this.request(url, {
+      method: "POST",
+      body: bytes as unknown as BodyInit,
+      headers: { "Content-Type": contentType },
+    });
+    return this.parseMaybeEmpty<T>(res);
   }
 
   private async parseMaybeEmpty<T>(res: Response): Promise<T> {

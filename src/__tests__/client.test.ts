@@ -1,5 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { GooglePlayClient, PUBLISHER_BASE_URL, REPORTING_BASE_URL } from "../play/client.js";
+import {
+  GooglePlayClient,
+  PUBLISHER_BASE_URL,
+  PUBLISHER_UPLOAD_BASE_URL,
+  REPORTING_BASE_URL,
+} from "../play/client.js";
 
 function resp(body: unknown, init: { status?: number; statusText?: string } = {}) {
   const text = typeof body === "string" ? body : JSON.stringify(body);
@@ -74,6 +79,34 @@ describe("GooglePlayClient", () => {
     const res = await client.put<{ track: string }>("/tracks/production", { track: "production" });
     expect(mockFetch.mock.calls[0][1].method).toBe("PUT");
     expect(res.track).toBe("production");
+  });
+
+  it("patch sends the body and returns the parsed response", async () => {
+    mockFetch.mockResolvedValueOnce(resp({ title: "Acme" }));
+    const res = await client.patch<{ title: string }>("/listings/en-US", { title: "Acme" });
+    const options = mockFetch.mock.calls[0][1];
+    expect(options.method).toBe("PATCH");
+    expect(options.body).toBe('{"title":"Acme"}');
+    expect(res.title).toBe("Acme");
+  });
+
+  it("upload posts bytes to the upload host with uploadType=media and the given content type", async () => {
+    mockFetch.mockResolvedValueOnce(resp({ image: { id: "img-1" } }));
+    const bytes = new Uint8Array([1, 2, 3]);
+    await client.upload(
+      "/applications/com.acme.app/edits/1/listings/en-US/icon",
+      bytes,
+      "image/png",
+    );
+
+    const [url, options] = mockFetch.mock.calls[0];
+    expect(new URL(url).origin + new URL(url).pathname).toBe(
+      `${PUBLISHER_UPLOAD_BASE_URL}/applications/com.acme.app/edits/1/listings/en-US/icon`,
+    );
+    expect(new URL(url).searchParams.get("uploadType")).toBe("media");
+    expect(options.method).toBe("POST");
+    expect(options.body).toBe(bytes);
+    expect(options.headers["Content-Type"]).toBe("image/png");
   });
 
   it("tolerates an empty response body", async () => {

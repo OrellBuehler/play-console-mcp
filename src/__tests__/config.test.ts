@@ -6,6 +6,7 @@ describe("config", () => {
     vi.stubEnv("GOOGLE_SERVICE_ACCOUNT_KEY", "");
     vi.stubEnv("GOOGLE_SERVICE_ACCOUNT_KEY_PATH", "");
     vi.stubEnv("GOOGLE_PLAY_PACKAGE_NAME", "");
+    vi.stubEnv("GOOGLE_PLAY_ALLOW_DESTRUCTIVE", "");
   });
   afterEach(() => {
     vi.unstubAllEnvs();
@@ -39,5 +40,28 @@ describe("config", () => {
     vi.stubEnv("GOOGLE_SERVICE_ACCOUNT_KEY_PATH", "/tmp/service-account.json");
     const { config } = await import("../config.js");
     expect(config.packageName).toBeUndefined();
+  });
+
+  it("keeps destructive tools disabled unless explicitly opted in", async () => {
+    vi.stubEnv("GOOGLE_SERVICE_ACCOUNT_KEY_PATH", "/tmp/service-account.json");
+    const { config } = await import("../config.js");
+    expect(config.allowDestructive).toBe(false);
+  });
+
+  it("enables destructive tools for 1, true and yes", async () => {
+    for (const value of ["1", "true", "TRUE", "yes"]) {
+      vi.resetModules();
+      vi.stubEnv("GOOGLE_SERVICE_ACCOUNT_KEY_PATH", "/tmp/service-account.json");
+      vi.stubEnv("GOOGLE_PLAY_ALLOW_DESTRUCTIVE", value);
+      const { config } = await import("../config.js");
+      expect(config.allowDestructive).toBe(true);
+    }
+  });
+
+  it("ignores other values for the destructive flag", async () => {
+    vi.stubEnv("GOOGLE_SERVICE_ACCOUNT_KEY_PATH", "/tmp/service-account.json");
+    vi.stubEnv("GOOGLE_PLAY_ALLOW_DESTRUCTIVE", "0");
+    const { config } = await import("../config.js");
+    expect(config.allowDestructive).toBe(false);
   });
 });

@@ -5,6 +5,9 @@ const serviceAccountKey = process.env.GOOGLE_SERVICE_ACCOUNT_KEY;
 const serviceAccountKeyPath =
   (process.env.GOOGLE_SERVICE_ACCOUNT_KEY_PATH || "").trim() || undefined;
 const packageName = (process.env.GOOGLE_PLAY_PACKAGE_NAME || "").trim() || undefined;
+const allowDestructive = /^(1|true|yes)$/i.test(
+  (process.env.GOOGLE_PLAY_ALLOW_DESTRUCTIVE || "").trim(),
+);
 
 if (!serviceAccountKey?.trim() && !serviceAccountKeyPath) {
   console.error(
@@ -17,6 +20,7 @@ if (!serviceAccountKey?.trim() && !serviceAccountKeyPath) {
 
 export const config = {
   packageName,
+  allowDestructive,
   transport: "stdio" as const,
 };
 

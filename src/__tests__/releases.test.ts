@@ -290,6 +290,219 @@ describe("release tools", () => {
     expect(res.content[0].text).toContain("No in-progress rollout");
   });
 
+  it("promote_release carries countryTargeting and inAppUpdatePriority through", async () => {
+    mockFetch
+      .mockResolvedValueOnce(resp({ id: "e13" }))
+      .mockResolvedValueOnce(
+        resp({
+          track: "beta",
+          releases: [
+            {
+              name: "1.6",
+              versionCodes: ["500"],
+              status: "completed",
+              countryTargeting: { countries: ["CH"], includeRestOfWorld: false },
+              inAppUpdatePriority: 3,
+            },
+          ],
+        }),
+      )
+      .mockResolvedValueOnce(resp({}))
+      .mockResolvedValueOnce(resp({}));
+
+    await tools.get("promote_release")!({ from_track: "beta", to_track: "production" });
+    expect(JSON.parse(mockFetch.mock.calls[2][1].body).releases[0]).toMatchObject({
+      countryTargeting: { countries: ["CH"], includeRestOfWorld: false },
+      inAppUpdatePriority: 3,
+    });
+  });
+
+  it("promote_release lets explicit country targeting override the source", async () => {
+    mockFetch
+      .mockResolvedValueOnce(resp({ id: "e14" }))
+      .mockResolvedValueOnce(
+        resp({
+          track: "beta",
+          releases: [
+            {
+              name: "1.6",
+              versionCodes: ["500"],
+              status: "completed",
+              countryTargeting: { countries: ["CH"] },
+            },
+          ],
+        }),
+      )
+      .mockResolvedValueOnce(resp({}))
+      .mockResolvedValueOnce(resp({}));
+
+    await tools.get("promote_release")!({
+      from_track: "beta",
+      to_track: "production",
+      country_targeting: { countries: ["DE", "AT"], include_rest_of_world: true },
+    });
+    expect(JSON.parse(mockFetch.mock.calls[2][1].body).releases[0].countryTargeting).toEqual({
+      countries: ["DE", "AT"],
+      includeRestOfWorld: true,
+    });
+  });
+
+  it("create_release puts a release built from explicit version codes", async () => {
+    mockFetch
+      .mockResolvedValueOnce(resp({ id: "e15" }))
+      .mockResolvedValueOnce(resp({ track: "internal" }))
+      .mockResolvedValueOnce(resp({}));
+
+    const res = await tools.get("create_release")!({
+      track: "internal",
+      version_codes: ["500"],
+      release_name: "1.6.0",
+      release_notes: [{ language: "en-US", text: "New" }],
+      in_app_update_priority: 4,
+    });
+
+    expect(calls(mockFetch)).toEqual([
+      "POST /androidpublisher/v3/applications/com.acme.app/edits",
+      "PUT /androidpublisher/v3/applications/com.acme.app/edits/e15/tracks/internal",
+      "POST /androidpublisher/v3/applications/com.acme.app/edits/e15:commit",
+    ]);
+    expect(JSON.parse(mockFetch.mock.calls[1][1].body)).toEqual({
+      track: "internal",
+      releases: [
+        {
+          versionCodes: ["500"],
+          status: "completed",
+          name: "1.6.0",
+          releaseNotes: [{ language: "en-US", text: "New" }],
+          inAppUpdatePriority: 4,
+        },
+      ],
+    });
+    expect(JSON.parse(res.content[0].text!).committed).toBe(true);
+  });
+
+  it("create_release defaults to inProgress when a user fraction is given", async () => {
+    mockFetch
+      .mockResolvedValueOnce(resp({ id: "e16" }))
+      .mockResolvedValueOnce(resp({}))
+      .mockResolvedValueOnce(resp({}));
+
+    await tools.get("create_release")!({
+      track: "production",
+      version_codes: ["500"],
+      user_fraction: 0.2,
+    });
+    expect(JSON.parse(mockFetch.mock.calls[1][1].body).releases[0]).toMatchObject({
+      status: "inProgress",
+      userFraction: 0.2,
+    });
+  });
+
+  it("update_release_notes replaces only the notes of the active release", async () => {
+    mockFetch
+      .mockResolvedValueOnce(resp({ id: "e17" }))
+      .mockResolvedValueOnce(
+        resp({
+          track: "production",
+          releases: [
+            {
+              name: "1.4",
+              versionCodes: ["415"],
+              status: "inProgress",
+              userFraction: 0.5,
+              releaseNotes: [{ language: "en-US", text: "Old" }],
+            },
+          ],
+        }),
+      )
+      .mockResolvedValueOnce(resp({}))
+      .mockResolvedValueOnce(resp({}));
+
+    await tools.get("update_release_notes")!({
+      track: "production",
+      release_notes: [{ language: "de-DE", text: "Neu" }],
+    });
+
+    expect(JSON.parse(mockFetch.mock.calls[2][1].body).releases[0]).toEqual({
+      name: "1.4",
+      versionCodes: ["415"],
+      status: "inProgress",
+      userFraction: 0.5,
+      releaseNotes: [{ language: "de-DE", text: "Neu" }],
+    });
+  });
+
+  it("update_release_notes errors when the track has no release", async () => {
+    mockFetch
+      .mockResolvedValueOnce(resp({ id: "e18" }))
+      .mockResolvedValueOnce(resp({ track: "production", releases: [] }))
+      .mockResolvedValueOnce(resp(""));
+
+    const res = await tools.get("update_release_notes")!({
+      track: "production",
+      release_notes: [{ language: "en-US", text: "x" }],
+    });
+    expect(res.isError).toBe(true);
+    expect(res.content[0].text).toContain("No release on track 'production'");
+  });
+
+  it("create_track posts a closed testing TrackConfig", async () => {
+    mockFetch
+      .mockResolvedValueOnce(resp({ id: "e19" }))
+      .mockResolvedValueOnce(resp({ track: "qa-team" }))
+      .mockResolvedValueOnce(resp({}));
+
+    await tools.get("create_track")!({ track: "qa-team" });
+    expect(calls(mockFetch)[1]).toBe(
+      "POST /androidpublisher/v3/applications/com.acme.app/edits/e19/tracks",
+    );
+    expect(JSON.parse(mockFetch.mock.calls[1][1].body)).toEqual({
+      track: "qa-team",
+      type: "CLOSED_TESTING",
+      formFactor: "DEFAULT",
+    });
+  });
+
+  it("get_country_availability reads the camelCase path inside an edit", async () => {
+    mockFetch
+      .mockResolvedValueOnce(resp({ id: "e20" }))
+      .mockResolvedValueOnce(resp({ syncWithProduction: true }))
+      .mockResolvedValueOnce(resp(""));
+
+    await tools.get("get_country_availability")!({ track: "production" });
+    expect(calls(mockFetch)[1]).toBe(
+      "GET /androidpublisher/v3/applications/com.acme.app/edits/e20/countryAvailability/production",
+    );
+  });
+
+  it("get_testers reads the google groups of a closed track", async () => {
+    mockFetch
+      .mockResolvedValueOnce(resp({ id: "e21" }))
+      .mockResolvedValueOnce(resp({ googleGroups: ["qa@acme.com"] }))
+      .mockResolvedValueOnce(resp(""));
+
+    const res = await tools.get("get_testers")!({ track: "alpha" });
+    expect(calls(mockFetch)[1]).toBe(
+      "GET /androidpublisher/v3/applications/com.acme.app/edits/e21/testers/alpha",
+    );
+    expect(JSON.parse(res.content[0].text!).googleGroups).toEqual(["qa@acme.com"]);
+  });
+
+  it("update_testers replaces the google group list", async () => {
+    mockFetch
+      .mockResolvedValueOnce(resp({ id: "e22" }))
+      .mockResolvedValueOnce(resp({ googleGroups: ["qa@acme.com"] }))
+      .mockResolvedValueOnce(resp({}));
+
+    await tools.get("update_testers")!({ track: "alpha", google_groups: ["qa@acme.com"] });
+    expect(calls(mockFetch)[1]).toBe(
+      "PUT /androidpublisher/v3/applications/com.acme.app/edits/e22/testers/alpha",
+    );
+    expect(JSON.parse(mockFetch.mock.calls[1][1].body)).toEqual({
+      googleGroups: ["qa@acme.com"],
+    });
+  });
+
   it("errors when no package name is available", async () => {
     const bare = collect();
     const res = await bare.get("list_tracks")!({});
