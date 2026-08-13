@@ -22,25 +22,36 @@ staged rollout, and checking crash/ANR vitals before and after a release.
 ## Install
 
 ```bash
-claude mcp add play-console -- npx -y @orellbuehler/play-console-mcp \
-  --env GOOGLE_SERVICE_ACCOUNT_KEY_PATH=/path/to/service-account.json \
-  --env GOOGLE_PLAY_PACKAGE_NAME=com.example.app
+claude mcp add play-console \
+  -e GOOGLE_SERVICE_ACCOUNT_KEY_PATH=/path/to/service-account.json \
+  -e GOOGLE_PLAY_PACKAGE_NAME=com.example.app \
+  -- npx -y @orellbuehler/play-console-mcp
 ```
+
+The `-e` flags must come **before** the `--` separator; anything after `--` is passed to the server
+process instead of being read as configuration.
 
 ## Getting a service account key
 
-1. In the [Google Play Console](https://play.google.com/console), go to **Setup → API access**.
-2. Create a new Google Cloud project or link an existing one.
-3. Under **Service accounts**, click **Create new service account** and follow the link to the Google
-   Cloud console.
-4. Create the service account, then create a **JSON key** for it and download the file.
-5. Back in the Play Console, click **Manage Play Console permissions** for that service account and
-   grant it access to your app(s) with at least:
-   - **View app information and download bulk reports** (required by every tool)
+1. In the [Google Cloud console](https://console.cloud.google.com), select or create a project and
+   enable the **Google Play Android Developer API**.
+2. Go to **IAM & Admin → Service accounts → Create service account**. You can skip the optional
+   "grant access" steps — Play Console permissions are granted separately, not via Cloud IAM roles.
+3. Open the new service account, go to the **Keys** tab, and choose **Add key → Create new key →
+   JSON**. The file downloads once and cannot be retrieved again.
+4. In the [Google Play Console](https://play.google.com/console), go to **Users and permissions →
+   Invite new users** and paste the service account's email address
+   (`name@project-id.iam.gserviceaccount.com`) as if it were a person.
+5. Select your app and grant at least:
+   - **View app information** (required by every tool)
    - **Reply to reviews** (for `reply_to_review`)
-   - **Release apps to testing tracks** and/or **Release to production** (for `promote_release`,
+   - **Release to testing tracks** and/or **Production releases** (for `promote_release`,
      `update_rollout`, `halt_rollout`)
 6. Point `GOOGLE_SERVICE_ACCOUNT_KEY_PATH` at the downloaded JSON file.
+
+You no longer need to link your Play developer account to a Google Cloud project to use the API.
+Treat the JSON key like a password — it carries whatever permissions you granted, with no second
+factor in front of it. Keep it outside the repository and consider `chmod 600`.
 
 Permission changes can take a few minutes to propagate. Until they do, calls fail with
 `The caller does not have permission`.
