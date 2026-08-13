@@ -9,7 +9,7 @@ export function createServer(
   reportingClient: GooglePlayClient,
   packageName?: string,
 ): McpServer {
-  const server = new McpServer({ name: "play-console-mcp", version: "0.1.0" });
+  const server = new McpServer({ name: "play-console-mcp", version: "0.1.1" });
   registerReviewTools(server, client, packageName);
   registerReleaseTools(server, client, packageName);
   registerVitalsTools(server, reportingClient, packageName);

@@ -17,10 +17,25 @@ interface MetricsQueryResponse {
 const DIMENSIONS = [
   "apiLevel",
   "versionCode",
+  "countryCode",
+  "reportType",
+  "issueId",
+  "isUserPerceived",
   "deviceModel",
   "deviceBrand",
   "deviceType",
-  "countryCode",
+  "deviceRamBucket",
+  "deviceSocMake",
+  "deviceSocModel",
+  "deviceCpuMake",
+  "deviceCpuModel",
+  "deviceGpuMake",
+  "deviceGpuModel",
+  "deviceGpuVersion",
+  "deviceVulkanVersion",
+  "deviceGlEsVersion",
+  "deviceScreenSize",
+  "deviceScreenDpi",
 ] as const;
 
 export function parseDate(value: string): DateParts {
@@ -32,6 +47,11 @@ export function parseDate(value: string): DateParts {
 function timeZoneFor(aggregationPeriod: string): string {
   return aggregationPeriod === "HOURLY" ? "UTC" : "America/Los_Angeles";
 }
+
+// The :query metric endpoints accept America/Los_Angeles in timelineSpec, but the :search
+// endpoints reject it with "Unsupported timezone" and only accept UTC (or no timeZone at all).
+// Do not unify this with timeZoneFor above.
+const SEARCH_TIME_ZONE = "UTC";
 
 const metricShape = {
   package_name: z
@@ -73,11 +93,11 @@ function intervalParams(startDate: string, endDate: string) {
     "interval.startTime.year": start.year,
     "interval.startTime.month": start.month,
     "interval.startTime.day": start.day,
-    "interval.startTime.timeZone.id": "America/Los_Angeles",
+    "interval.startTime.timeZone.id": SEARCH_TIME_ZONE,
     "interval.endTime.year": end.year,
     "interval.endTime.month": end.month,
     "interval.endTime.day": end.day,
-    "interval.endTime.timeZone.id": "America/Los_Angeles",
+    "interval.endTime.timeZone.id": SEARCH_TIME_ZONE,
   };
 }
 
@@ -122,7 +142,7 @@ export function registerVitalsTools(
               startTime: { ...parseDate(start_date), timeZone: { id: timeZoneFor(period) } },
               endTime: { ...parseDate(end_date), timeZone: { id: timeZoneFor(period) } },
             },
-            dimensions: [...(dimensions ?? []), ...extraDimensions],
+            dimensions: [...new Set([...(dimensions ?? []), ...extraDimensions])],
             metrics: metrics ?? defaultMetrics,
             pageSize: limit ?? 50,
             ...(filter ? { filter } : {}),
@@ -155,9 +175,10 @@ export function registerVitalsTools(
 
   metricTool(
     "query_error_counts",
-    "Query absolute counts of error reports (crashes and ANRs) over time: errorReportCount and distinctUsers. Break down by reportType (CRASH/ANR) or issueId to see which issues drive the volume, then use search_error_issues for details.",
+    "Query absolute counts of error reports (crashes and ANRs) over time: errorReportCount and distinctUsers. Rows are always broken down by reportType (CRASH/ANR/NON_FATAL), which the API requires; add issueId to see which issues drive the volume, then use search_error_issues for details.",
     "errorCountMetricSet",
     ["errorReportCount", "distinctUsers"],
+    ["reportType"],
   );
 
   server.tool(

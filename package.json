@@ -1,6 +1,6 @@
 {
   "name": "@orellbuehler/play-console-mcp",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Model Context Protocol server for the Google Play Console: read and reply to user reviews, inspect and promote release tracks, and query crash/ANR vitals over the official Google Play Developer and Play Developer Reporting APIs.",
   "type": "module",
   "bin": {

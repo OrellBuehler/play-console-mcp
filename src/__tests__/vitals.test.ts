@@ -94,6 +94,28 @@ describe("vitals tools", () => {
     expect(JSON.parse(mockFetch.mock.calls[0][1].body).metrics).toEqual(["errorReportCount"]);
   });
 
+  it("query_error_counts always sends the required reportType dimension", async () => {
+    mockFetch.mockResolvedValueOnce(resp({ rows: [] }));
+    await tools.get("query_error_counts")!({ ...range });
+    expect(JSON.parse(mockFetch.mock.calls[0][1].body).dimensions).toEqual(["reportType"]);
+
+    mockFetch.mockResolvedValueOnce(resp({ rows: [] }));
+    await tools.get("query_error_counts")!({ ...range, dimensions: ["versionCode"] });
+    expect(JSON.parse(mockFetch.mock.calls[1][1].body).dimensions).toEqual([
+      "versionCode",
+      "reportType",
+    ]);
+  });
+
+  it("query_error_counts does not duplicate reportType when the caller passes it", async () => {
+    mockFetch.mockResolvedValueOnce(resp({ rows: [] }));
+    await tools.get("query_error_counts")!({ ...range, dimensions: ["reportType", "issueId"] });
+    expect(JSON.parse(mockFetch.mock.calls[0][1].body).dimensions).toEqual([
+      "reportType",
+      "issueId",
+    ]);
+  });
+
   it("search_error_issues flattens the interval into query params", async () => {
     mockFetch.mockResolvedValueOnce(resp({ errorIssues: [{ name: "i1" }] }));
     const res = await tools.get("search_error_issues")!({
@@ -113,6 +135,26 @@ describe("vitals tools", () => {
     expect(url.searchParams.get("orderBy")).toBe("errorReportCount desc");
     expect(url.searchParams.get("pageSize")).toBe("10");
     expect(JSON.parse(res.content[0].text!).count).toBe(1);
+  });
+
+  it("search endpoints send UTC, while metric endpoints send America/Los_Angeles", async () => {
+    mockFetch.mockResolvedValueOnce(resp({ errorIssues: [] }));
+    await tools.get("search_error_issues")!({ ...range });
+    const search = new URL(mockFetch.mock.calls[0][0]).searchParams;
+    expect(search.get("interval.startTime.timeZone.id")).toBe("UTC");
+    expect(search.get("interval.endTime.timeZone.id")).toBe("UTC");
+
+    mockFetch.mockResolvedValueOnce(resp({ errorReports: [] }));
+    await tools.get("search_error_reports")!({ ...range });
+    expect(
+      new URL(mockFetch.mock.calls[1][0]).searchParams.get("interval.startTime.timeZone.id"),
+    ).toBe("UTC");
+
+    mockFetch.mockResolvedValueOnce(resp({ rows: [] }));
+    await tools.get("query_crash_rate")!({ ...range });
+    expect(JSON.parse(mockFetch.mock.calls[2][1].body).timelineSpec.startTime.timeZone).toEqual({
+      id: "America/Los_Angeles",
+    });
   });
 
   it("search_error_reports searches individual reports", async () => {
