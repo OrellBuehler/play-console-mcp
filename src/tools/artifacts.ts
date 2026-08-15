@@ -90,4 +90,54 @@ export function registerArtifactTools(
       }
     },
   );
+
+  server.tool(
+    "list_device_tier_configs",
+    "List the device tier configs of an app, newest first. A device tier config groups devices into tiers by RAM, system-on-chip and other selectors so one app bundle can serve different assets per tier. Each entry has a deviceTierConfigId plus its deviceGroups, deviceTierSet and userCountrySets; pass an id to get_device_tier_config for the full definition. Returns 10 by default, 100 at most; pass page_token from nextPageToken to continue. Device tier configs are read-only here — create them in the Play Console or with bundletool.",
+    {
+      limit: z
+        .number()
+        .int()
+        .min(1)
+        .max(100)
+        .optional()
+        .describe("Max device tier configs (default: 10)"),
+      page_token: z.string().optional().describe("nextPageToken from a previous call"),
+      package_name: packageArg,
+    },
+    async ({ limit, page_token, package_name }) => {
+      try {
+        const pkg = resolvePackage(package_name, defaultPackageName);
+        const res = await client.get<{ deviceTierConfigs?: unknown[]; nextPageToken?: string }>(
+          `/applications/${encodeURIComponent(pkg)}/deviceTierConfigs`,
+          { pageSize: limit, pageToken: page_token },
+        );
+        return ok({ packageName: pkg, count: (res.deviceTierConfigs ?? []).length, ...res });
+      } catch (e) {
+        return err(e);
+      }
+    },
+  );
+
+  server.tool(
+    "get_device_tier_config",
+    "Get one device tier config by id, with its deviceGroups (each a named set of device selectors — a device belongs to the group if it matches any selector), deviceTierSet and userCountrySets. Get ids from list_device_tier_configs. Bundles using Play Asset Delivery target these groups and tiers.",
+    {
+      device_tier_config_id: z
+        .string()
+        .describe("Id of the device tier config. Get it from list_device_tier_configs."),
+      package_name: packageArg,
+    },
+    async ({ device_tier_config_id, package_name }) => {
+      try {
+        const pkg = resolvePackage(package_name, defaultPackageName);
+        const res = await client.get(
+          `/applications/${encodeURIComponent(pkg)}/deviceTierConfigs/${encodeURIComponent(device_tier_config_id)}`,
+        );
+        return ok(res);
+      } catch (e) {
+        return err(e);
+      }
+    },
+  );
 }

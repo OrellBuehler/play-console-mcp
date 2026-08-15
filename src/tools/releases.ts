@@ -122,6 +122,28 @@ export function registerReleaseTools(
   );
 
   server.tool(
+    "list_releases",
+    "List the releases on a track, including ones that are not live yet. Each entry has releaseName, track, activeArtifacts (version codes) and releaseLifecycleState: DRAFT, NOT_SENT_FOR_REVIEW, IN_REVIEW, APPROVED_NOT_PUBLISHED, NOT_APPROVED or PUBLISHED. This is the only tool that shows review state, so use it to check whether a submitted release is still being reviewed; get_track shows rollout details (userFraction, release notes) instead. Reads the track directly without opening an edit. Obsolete releases are excluded and Google returns at most 20.",
+    {
+      track: z
+        .string()
+        .describe("Track name: 'internal', 'alpha', 'beta', 'production' or a custom track name"),
+      package_name: packageArg,
+    },
+    async ({ track, package_name }) => {
+      try {
+        const pkg = resolvePackage(package_name, defaultPackageName);
+        const res = await client.get<{ releases?: unknown[] }>(
+          `/applications/${encodeURIComponent(pkg)}/tracks/${encodeURIComponent(track)}/releases`,
+        );
+        return ok({ packageName: pkg, track, count: (res.releases ?? []).length, ...res });
+      } catch (e) {
+        return err(e);
+      }
+    },
+  );
+
+  server.tool(
     "promote_release",
     "Promote the active release of one track to another (e.g. beta -> production), keeping its version codes. Omit user_fraction for a full rollout (status 'completed'); pass user_fraction for a staged rollout (status 'inProgress'). This replaces the destination track's release list, matching how promoting works in the Play Console. Use validate_only first to check the change without committing.",
     {

@@ -67,7 +67,7 @@ the two REST clients.
   throwing a helpful error if neither is set).
 - **`src/tools/*.ts`** — each exports a `register*Tools(server, client, packageName?)` function that
   `server.ts` calls: `reviews`, `releases`, `listings`, `artifacts`, `recovery` (all on the publisher
-  client), `vitals` (on the reporting client). `listings` and `recovery` take a fourth
+  client), `vitals` and `apps` (on the reporting client). `listings` and `recovery` take a fourth
   `allowDestructive` argument.
 - **`src/tools/shared.ts`** — Zod shapes reused across tool modules: `packageArg`, `writeShape`
   (`validate_only` + `changes_not_sent_for_review`) and `releaseNotesSchema`. Reuse these instead of

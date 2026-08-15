@@ -68,6 +68,25 @@ describe("release tools", () => {
     );
   });
 
+  it("list_releases reads the track without opening an edit", async () => {
+    mockFetch.mockResolvedValueOnce(
+      resp({
+        releases: [
+          { releaseName: "1.2.3", releaseLifecycleState: "RELEASE_LIFECYCLE_STATE_DRAFT" },
+        ],
+      }),
+    );
+
+    const res = await tools.get("list_releases")!({ track: "production" });
+    expect(calls(mockFetch)).toEqual([
+      "GET /androidpublisher/v3/applications/com.acme.app/tracks/production/releases",
+    ]);
+    const payload = JSON.parse(res.content[0].text!);
+    expect(payload.count).toBe(1);
+    expect(payload.track).toBe("production");
+    expect(payload.releases[0].releaseLifecycleState).toBe("RELEASE_LIFECYCLE_STATE_DRAFT");
+  });
+
   it("promote_release copies version codes and commits a full rollout", async () => {
     mockFetch
       .mockResolvedValueOnce(resp({ id: "e3" }))

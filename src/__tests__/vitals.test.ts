@@ -116,6 +116,94 @@ describe("vitals tools", () => {
     ]);
   });
 
+  it("query_slow_start_rate always sends the required startType dimension", async () => {
+    mockFetch.mockResolvedValueOnce(resp({ rows: [] }));
+    await tools.get("query_slow_start_rate")!({ ...range, dimensions: ["versionCode"] });
+    expect(mockFetch.mock.calls[0][0]).toContain("/slowStartRateMetricSet:query");
+    const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+    expect(body.dimensions).toEqual(["versionCode", "startType"]);
+    expect(body.metrics).toEqual(["slowStartRate", "distinctUsers"]);
+  });
+
+  it("the daily-only metric sets query their own resources", async () => {
+    const cases: [string, string, string][] = [
+      ["query_slow_rendering_rate", "slowRenderingRateMetricSet", "slowRenderingRate20Fps"],
+      ["query_excessive_wakeup_rate", "excessiveWakeupRateMetricSet", "excessiveWakeupRate"],
+      ["query_stuck_wakelock_rate", "stuckBackgroundWakelockRateMetricSet", "stuckBgWakelockRate"],
+      ["query_lmk_rate", "lmkRateMetricSet", "userPerceivedLmkRate"],
+      ["query_bitmap_memory_usage", "bitmapMemoryUsageMetricSet", "bitmapMemoryUsageP50"],
+      ["query_memory_usage", "anonRssAndSwapMemoryUsageMetricSet", "anonRssAndSwapMemoryUsageP50"],
+    ];
+
+    for (const [tool, metricSet, firstMetric] of cases) {
+      mockFetch.mockResolvedValueOnce(resp({ rows: [] }));
+      await tools.get(tool)!({ ...range });
+      const [url, options] = mockFetch.mock.calls.at(-1)!;
+      expect(url).toBe(`${REPORTING_BASE_URL}/apps/com.acme.app/${metricSet}:query`);
+      const body = JSON.parse(options.body);
+      expect(body.metrics[0]).toBe(firstMetric);
+      expect(body.timelineSpec.aggregationPeriod).toBe("DAILY");
+      expect(body.timelineSpec.startTime.timeZone).toEqual({ id: "America/Los_Angeles" });
+    }
+  });
+
+  it("list_anomalies passes filter and pagination as query params", async () => {
+    mockFetch.mockResolvedValueOnce(resp({ anomalies: [{ name: "a1" }], nextPageToken: "next" }));
+    const res = await tools.get("list_anomalies")!({
+      filter: 'activeBetween("2026-08-01T00:00:00Z", UNBOUNDED)',
+      limit: 50,
+      page_token: "tok-2",
+    });
+
+    const url = new URL(mockFetch.mock.calls[0][0]);
+    expect(url.pathname).toBe("/v1beta1/apps/com.acme.app/anomalies");
+    expect(url.searchParams.get("filter")).toBe('activeBetween("2026-08-01T00:00:00Z", UNBOUNDED)');
+    expect(url.searchParams.get("pageSize")).toBe("50");
+    expect(url.searchParams.get("pageToken")).toBe("tok-2");
+    const payload = JSON.parse(res.content[0].text!);
+    expect(payload.count).toBe(1);
+    expect(payload.nextPageToken).toBe("next");
+  });
+
+  it("get_vitals_freshness reads the three default metric sets", async () => {
+    mockFetch
+      .mockResolvedValueOnce(resp({ name: "apps/com.acme.app/crashRateMetricSet" }))
+      .mockResolvedValueOnce(resp({ name: "apps/com.acme.app/anrRateMetricSet" }))
+      .mockResolvedValueOnce(resp({ name: "apps/com.acme.app/errorCountMetricSet" }));
+
+    const res = await tools.get("get_vitals_freshness")!({});
+    expect(mockFetch.mock.calls.map((c) => new URL(c[0]).pathname)).toEqual([
+      "/v1beta1/apps/com.acme.app/crashRateMetricSet",
+      "/v1beta1/apps/com.acme.app/anrRateMetricSet",
+      "/v1beta1/apps/com.acme.app/errorCountMetricSet",
+    ]);
+    expect(JSON.parse(res.content[0].text!).metricSets).toHaveLength(3);
+  });
+
+  it("get_vitals_freshness reports per-metric-set failures instead of failing", async () => {
+    mockFetch
+      .mockResolvedValueOnce(
+        resp({ name: "apps/com.acme.app/crashRateMetricSet", freshnessInfo: { freshnesses: [] } }),
+      )
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 403,
+        statusText: "Forbidden",
+        text: () => Promise.resolve("no games data"),
+      });
+
+    const res = await tools.get("get_vitals_freshness")!({
+      metric_sets: ["crashRateMetricSet", "slowRenderingRateMetricSet"],
+    });
+    expect(res.isError).toBeUndefined();
+    const sets = JSON.parse(res.content[0].text!).metricSets;
+    expect(sets[0].freshnessInfo).toEqual({ freshnesses: [] });
+    expect(sets[1]).toEqual({
+      name: "apps/com.acme.app/slowRenderingRateMetricSet",
+      error: "Error: 403 Forbidden: no games data",
+    });
+  });
+
   it("search_error_issues flattens the interval into query params", async () => {
     mockFetch.mockResolvedValueOnce(resp({ errorIssues: [{ name: "i1" }] }));
     const res = await tools.get("search_error_issues")!({

@@ -90,6 +90,26 @@ describe("artifact tools", () => {
     );
   });
 
+  it("list_device_tier_configs passes pagination through as query params", async () => {
+    mockFetch.mockResolvedValueOnce(resp({ deviceTierConfigs: [{ deviceTierConfigId: "7" }] }));
+
+    const res = await tools.get("list_device_tier_configs")!({ limit: 25, page_token: "tok-2" });
+    const url = new URL(mockFetch.mock.calls[0][0]);
+    expect(url.pathname).toBe("/androidpublisher/v3/applications/com.acme.app/deviceTierConfigs");
+    expect(url.searchParams.get("pageSize")).toBe("25");
+    expect(url.searchParams.get("pageToken")).toBe("tok-2");
+    expect(JSON.parse(res.content[0].text!).count).toBe(1);
+  });
+
+  it("get_device_tier_config reads a single config by id", async () => {
+    mockFetch.mockResolvedValueOnce(resp({ deviceTierConfigId: "7", deviceGroups: [] }));
+
+    await tools.get("get_device_tier_config")!({ device_tier_config_id: "7" });
+    expect(calls(mockFetch)).toEqual([
+      "GET /androidpublisher/v3/applications/com.acme.app/deviceTierConfigs/7",
+    ]);
+  });
+
   it("errors when no package name is available", async () => {
     const bare = collect();
     const res = await bare.get("list_bundles")!({});

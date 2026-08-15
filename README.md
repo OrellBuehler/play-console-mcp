@@ -13,7 +13,7 @@ AI agents.
 Its focus is **managing user feedback and Android app releases** — reading and replying to Play
 Store reviews, cutting a release from an uploaded bundle, editing release notes, promoting a build
 from beta to production, steering a staged rollout, editing the store listing, rolling out an app
-recovery action, and checking crash/ANR vitals before and after a release.
+recovery action, and checking crash, ANR, memory and battery vitals before and after a release.
 
 > **What it deliberately does not do:** no app bundle (AAB/APK) uploads — upload those from CI or
 > the Play Console and reference the resulting version codes here — no in-app product or
@@ -101,6 +101,7 @@ Permission changes can take a few minutes to propagate. Until they do, calls fai
 - "The crash rate spiked — halt the production rollout."
 - "Compare the crash rate for version code 415 against 414 over the last two weeks."
 - "Show me the top crash issues by affected users and the stack trace for the worst one."
+- "Anything anomalous in our vitals this week? Pull the timeline around whatever you find."
 
 ## Tools
 
@@ -118,6 +119,7 @@ Permission changes can take a few minutes to propagate. Until they do, calls fai
 | -------------------------- | ------------------------------------------------------------------------------------- |
 | `list_tracks`              | List all tracks with their releases (version codes, status, rollout fraction, notes)  |
 | `get_track`                | Get a single track and its releases                                                   |
+| `list_releases`            | List a track's releases with their review state, without opening an edit              |
 | `create_release`           | Release explicit version codes on a track, with notes, rollout fraction and targeting |
 | `promote_release`          | Promote the active release of one track to another, optionally as a staged rollout    |
 | `update_release_notes`     | Replace the "what's new" text of a track's active release, leaving the rollout alone  |
@@ -130,12 +132,14 @@ Permission changes can take a few minutes to propagate. Until they do, calls fai
 
 ### Artifacts
 
-| Tool                  | Description                                                                  |
-| --------------------- | ---------------------------------------------------------------------------- |
-| `list_bundles`        | List uploaded app bundles with their version codes and hashes                |
-| `list_apks`           | List uploaded APKs with their version codes and hashes                       |
-| `list_generated_apks` | List the APKs Play generated from a bundle, grouped by signing key           |
-| `get_expansion_file`  | Get the OBB expansion file attached to an APK version code (legacy APK-only) |
+| Tool                       | Description                                                                  |
+| -------------------------- | ---------------------------------------------------------------------------- |
+| `list_bundles`             | List uploaded app bundles with their version codes and hashes                |
+| `list_apks`                | List uploaded APKs with their version codes and hashes                       |
+| `list_generated_apks`      | List the APKs Play generated from a bundle, grouped by signing key           |
+| `get_expansion_file`       | Get the OBB expansion file attached to an APK version code (legacy APK-only) |
+| `list_device_tier_configs` | List the app's device tier configs (device groups, tiers, country sets)      |
+| `get_device_tier_config`   | Get one device tier config by id                                             |
 
 Bundles and APKs are read-only here — upload them from CI or the Play Console, then pass the
 version codes to `create_release`.
@@ -175,13 +179,29 @@ opt-in.
 
 ### Vitals
 
-| Tool                   | Description                                                                 |
-| ---------------------- | --------------------------------------------------------------------------- |
-| `query_crash_rate`     | Crash rate and user-perceived crash rate over time, optionally by dimension |
-| `query_anr_rate`       | ANR rate and user-perceived ANR rate over time                              |
-| `query_error_counts`   | Absolute error report counts and affected users, e.g. broken down by issue  |
-| `search_error_issues`  | Grouped crash/ANR issues with cause, location, counts and Play Console link |
-| `search_error_reports` | Individual error reports including the raw stack trace                      |
+| Tool                          | Description                                                                 |
+| ----------------------------- | --------------------------------------------------------------------------- |
+| `list_anomalies`              | List datapoints Google flagged as anomalous, with the slice and metric hit  |
+| `get_vitals_freshness`        | Latest date available per metric set, so queries hit data that exists       |
+| `query_crash_rate`            | Crash rate and user-perceived crash rate over time, optionally by dimension |
+| `query_anr_rate`              | ANR rate and user-perceived ANR rate over time                              |
+| `query_error_counts`          | Absolute error report counts and affected users, e.g. broken down by issue  |
+| `query_lmk_rate`              | Low-memory-kill rate — stability failures that are not reported as crashes  |
+| `query_slow_start_rate`       | Slow app starts, broken down by cold/warm/hot start type                    |
+| `query_slow_rendering_rate`   | Slow rendering against 20fps and 30fps targets (games only)                 |
+| `query_excessive_wakeup_rate` | Users with more than 10 AlarmManager wakeups per hour (battery drain)       |
+| `query_stuck_wakelock_rate`   | Users with a background wakelock held for over an hour (battery drain)      |
+| `query_memory_usage`          | Anon RSS + swap memory usage percentiles                                    |
+| `query_bitmap_memory_usage`   | Bitmap memory usage percentiles                                             |
+| `search_error_issues`         | Grouped crash/ANR issues with cause, location, counts and Play Console link |
+| `search_error_reports`        | Individual error reports including the raw stack trace                      |
+
+### Apps
+
+| Tool                         | Description                                                              |
+| ---------------------------- | ------------------------------------------------------------------------ |
+| `list_apps`                  | List the apps this service account can access, with their package names  |
+| `get_release_filter_options` | Tracks and serving releases with their version codes, for vitals filters |
 
 ## Notes & caveats
 
@@ -203,7 +223,9 @@ opt-in.
 - **App recovery actions are user-visible and have no dry run.** `deploy_recovery_action` pushes a
   remote in-app update immediately; confirm the targeting with `list_recovery_actions` first.
 - **Vitals data lags.** Android vitals metrics are aggregated daily in `America/Los_Angeles` and are
-  typically about a day behind. Slices with too few users are omitted by Google.
+  typically about a day behind — `get_vitals_freshness` reports the latest date each metric set
+  actually has. Slices with too few users are omitted by Google. Only crash rate, ANR rate and error
+  counts support `HOURLY` aggregation; every other metric set is daily only.
 - **Ratings over time are not available** through the Reporting API; per-review star ratings come
   from `list_reviews`.
 

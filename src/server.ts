@@ -6,6 +6,7 @@ import { registerListingTools } from "./tools/listings.js";
 import { registerArtifactTools } from "./tools/artifacts.js";
 import { registerRecoveryTools } from "./tools/recovery.js";
 import { registerVitalsTools } from "./tools/vitals.js";
+import { registerAppsTools } from "./tools/apps.js";
 
 export function createServer(
   client: GooglePlayClient,
@@ -20,5 +21,6 @@ export function createServer(
   registerArtifactTools(server, client, packageName);
   registerRecoveryTools(server, client, packageName, allowDestructive);
   registerVitalsTools(server, reportingClient, packageName);
+  registerAppsTools(server, reportingClient, packageName);
   return server;
 }
