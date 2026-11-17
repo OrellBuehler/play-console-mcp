@@ -2,7 +2,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { GooglePlayClient } from "../play/client.js";
 import { ok, err, resolvePackage } from "../play/format.js";
-import { packageArg } from "./shared.js";
+import { packageArg, readOnly, UNTRUSTED_NOTE } from "./shared.js";
 
 interface DateParts {
   year: number;
@@ -148,6 +148,7 @@ export function registerVitalsTools(
           .optional()
           .describe(`Metrics to fetch (default: ${defaultMetrics.join(", ")})`),
       },
+      readOnly,
       async ({
         package_name,
         start_date,
@@ -288,6 +289,7 @@ export function registerVitalsTools(
       limit: z.number().int().min(1).max(100).optional().describe("Max anomalies (default: 10)"),
       page_token: z.string().optional().describe("nextPageToken from a previous call"),
     },
+    readOnly,
     async ({ package_name, filter, limit, page_token }) => {
       try {
         const pkg = resolvePackage(package_name, defaultPackageName);
@@ -316,6 +318,7 @@ export function registerVitalsTools(
         .optional()
         .describe(`Metric sets to check (default: ${DEFAULT_FRESHNESS_SETS.join(", ")})`),
     },
+    readOnly,
     async ({ package_name, metric_sets }) => {
       try {
         const pkg = resolvePackage(package_name, defaultPackageName);
@@ -336,7 +339,7 @@ export function registerVitalsTools(
 
   server.tool(
     "search_error_issues",
-    "Search grouped crash/ANR issues for an app (deduplicated stack traces). Each issue has a name containing its issue ID, type (CRASH/ANR), cause, location, errorReportCount, distinctUsers, affected versions, and an issueUri linking to the Play Console. Use the issue name with search_error_reports to read individual stack traces.",
+    `Search grouped crash/ANR issues for an app (deduplicated stack traces). Each issue has a name containing its issue ID, type (CRASH/ANR), cause, location, errorReportCount, distinctUsers, affected versions, and an issueUri linking to the Play Console. Use the issue name with search_error_reports to read individual stack traces. ${UNTRUSTED_NOTE}`,
     {
       ...searchShape,
       order_by: z
@@ -344,6 +347,7 @@ export function registerVitalsTools(
         .optional()
         .describe("Sort order, e.g. 'errorReportCount desc' or 'distinctUsers desc'"),
     },
+    readOnly,
     async ({ package_name, start_date, end_date, filter, order_by, limit }) => {
       try {
         const pkg = resolvePackage(package_name, defaultPackageName);
@@ -365,8 +369,9 @@ export function registerVitalsTools(
 
   server.tool(
     "search_error_reports",
-    "Search individual crash/ANR error reports for an app, including reportText with the raw stack trace, device info and app version. Filter to one issue with a filter like \"issue = 'apps/com.acme.app/errorIssues/<id>'\" using an issue name from search_error_issues.",
+    `Search individual crash/ANR error reports for an app, including reportText with the raw stack trace, device info and app version. Filter to one issue with a filter like "issue = 'apps/com.acme.app/errorIssues/<id>'" using an issue name from search_error_issues. ${UNTRUSTED_NOTE}`,
     searchShape,
+    readOnly,
     async ({ package_name, start_date, end_date, filter, limit }) => {
       try {
         const pkg = resolvePackage(package_name, defaultPackageName);

@@ -2,6 +2,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { GooglePlayClient } from "../play/client.js";
 import { ok, err, resolvePackage } from "../play/format.js";
+import { readOnly, destructive, UNTRUSTED_NOTE } from "./shared.js";
 
 export interface Review {
   reviewId?: string;
@@ -38,10 +39,11 @@ export function registerReviewTools(
   server: McpServer,
   client: GooglePlayClient,
   defaultPackageName?: string,
+  allowWrites = false,
 ) {
   server.tool(
     "list_reviews",
-    "List recent user reviews for an app, newest first. Each review has reviewId, authorName and comments[] containing the userComment (text, starRating 1-5, device, androidOsVersion, appVersionCode/Name, thumbsUp/DownCount, lastModified) and any developerComment already posted. Note the Google Play API only returns reviews created or modified in the last 7 days, only reviews that include written text, and only for production releases. Use the returned reviewId with get_review or reply_to_review.",
+    `List recent user reviews for an app, newest first. Each review has reviewId, authorName and comments[] containing the userComment (text, starRating 1-5, device, androidOsVersion, appVersionCode/Name, thumbsUp/DownCount, lastModified) and any developerComment already posted. Note the Google Play API only returns reviews created or modified in the last 7 days, only reviews that include written text, and only for production releases. Use the returned reviewId with get_review or reply_to_review. ${UNTRUSTED_NOTE}`,
     {
       package_name: z
         .string()
@@ -61,6 +63,7 @@ export function registerReviewTools(
         .optional()
         .describe("Max reviews to return (default: 50)"),
     },
+    readOnly,
     async ({ package_name, translation_language, limit }) => {
       try {
         const pkg = resolvePackage(package_name, defaultPackageName);
@@ -89,7 +92,7 @@ export function registerReviewTools(
 
   server.tool(
     "get_review",
-    "Get a single user review by its reviewId, including the full comment thread (user comment and any developer reply). Get review IDs from list_reviews.",
+    `Get a single user review by its reviewId, including the full comment thread (user comment and any developer reply). Get review IDs from list_reviews. ${UNTRUSTED_NOTE}`,
     {
       review_id: z.string().describe("Review ID as returned by list_reviews"),
       package_name: z
@@ -101,6 +104,7 @@ export function registerReviewTools(
         .optional()
         .describe("BCP-47 language code, e.g. 'en', to also return translated review text"),
     },
+    readOnly,
     async ({ review_id, package_name, translation_language }) => {
       try {
         const pkg = resolvePackage(package_name, defaultPackageName);
@@ -114,6 +118,8 @@ export function registerReviewTools(
       }
     },
   );
+
+  if (!allowWrites) return;
 
   server.tool(
     "reply_to_review",
@@ -130,6 +136,7 @@ export function registerReviewTools(
         .optional()
         .describe("App package name, e.g. 'com.acme.app' (defaults to GOOGLE_PLAY_PACKAGE_NAME)"),
     },
+    destructive,
     async ({ review_id, reply_text, package_name }) => {
       try {
         const pkg = resolvePackage(package_name, defaultPackageName);

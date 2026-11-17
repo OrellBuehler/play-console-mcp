@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises";
 import type { GooglePlayClient } from "../play/client.js";
 import { ok, err, resolvePackage } from "../play/format.js";
 import { readWithEdit, withEdit } from "../play/edits.js";
-import { packageArg, writeShape } from "./shared.js";
+import { packageArg, writeShape, readOnly, additive, destructive } from "./shared.js";
 
 const IMAGE_TYPES = [
   "phoneScreenshots",
@@ -48,6 +48,7 @@ export function registerListingTools(
   server: McpServer,
   client: GooglePlayClient,
   defaultPackageName?: string,
+  allowWrites = false,
   allowDestructive = false,
 ) {
   server.tool(
@@ -56,6 +57,7 @@ export function registerListingTools(
     {
       package_name: packageArg,
     },
+    readOnly,
     async ({ package_name }) => {
       try {
         const pkg = resolvePackage(package_name, defaultPackageName);
@@ -74,6 +76,7 @@ export function registerListingTools(
       language: languageArg,
       package_name: packageArg,
     },
+    readOnly,
     async ({ language, package_name }) => {
       try {
         const pkg = resolvePackage(package_name, defaultPackageName);
@@ -86,6 +89,48 @@ export function registerListingTools(
       }
     },
   );
+
+  server.tool(
+    "get_app_details",
+    "Get app-level details that are not per-locale: contactEmail, contactPhone, contactWebsite and defaultLanguage.",
+    {
+      package_name: packageArg,
+    },
+    readOnly,
+    async ({ package_name }) => {
+      try {
+        const pkg = resolvePackage(package_name, defaultPackageName);
+        const res = await readWithEdit(client, pkg, (base) => client.get(`${base}/details`));
+        return ok(res);
+      } catch (e) {
+        return err(e);
+      }
+    },
+  );
+
+  server.tool(
+    "list_listing_images",
+    "List the store images of one type for one locale, each with id, url, sha1 and sha256. Use the returned ids with delete_listing_image.",
+    {
+      language: languageArg,
+      image_type: imageTypeArg,
+      package_name: packageArg,
+    },
+    readOnly,
+    async ({ language, image_type, package_name }) => {
+      try {
+        const pkg = resolvePackage(package_name, defaultPackageName);
+        const res = await readWithEdit(client, pkg, (base) =>
+          client.get(`${base}/listings/${encodeURIComponent(language)}/${image_type}`),
+        );
+        return ok(res);
+      } catch (e) {
+        return err(e);
+      }
+    },
+  );
+
+  if (!allowWrites) return;
 
   server.tool(
     "update_listing",
@@ -114,6 +159,7 @@ export function registerListingTools(
       package_name: packageArg,
       ...writeShape,
     },
+    destructive,
     async ({
       language,
       title,
@@ -147,23 +193,6 @@ export function registerListingTools(
   );
 
   server.tool(
-    "get_app_details",
-    "Get app-level details that are not per-locale: contactEmail, contactPhone, contactWebsite and defaultLanguage.",
-    {
-      package_name: packageArg,
-    },
-    async ({ package_name }) => {
-      try {
-        const pkg = resolvePackage(package_name, defaultPackageName);
-        const res = await readWithEdit(client, pkg, (base) => client.get(`${base}/details`));
-        return ok(res);
-      } catch (e) {
-        return err(e);
-      }
-    },
-  );
-
-  server.tool(
     "update_app_details",
     "Update app-level contact details and default language. Only the fields you pass are changed. Use validate_only first to check the change without committing.",
     {
@@ -182,6 +211,7 @@ export function registerListingTools(
       package_name: packageArg,
       ...writeShape,
     },
+    destructive,
     async ({
       contact_email,
       contact_phone,
@@ -212,27 +242,6 @@ export function registerListingTools(
     },
   );
 
-  server.tool(
-    "list_listing_images",
-    "List the store images of one type for one locale, each with id, url, sha1 and sha256. Use the returned ids with delete_listing_image.",
-    {
-      language: languageArg,
-      image_type: imageTypeArg,
-      package_name: packageArg,
-    },
-    async ({ language, image_type, package_name }) => {
-      try {
-        const pkg = resolvePackage(package_name, defaultPackageName);
-        const res = await readWithEdit(client, pkg, (base) =>
-          client.get(`${base}/listings/${encodeURIComponent(language)}/${image_type}`),
-        );
-        return ok(res);
-      } catch (e) {
-        return err(e);
-      }
-    },
-  );
-
   if (!allowDestructive) return;
 
   server.tool(
@@ -247,6 +256,7 @@ export function registerListingTools(
       package_name: packageArg,
       ...writeShape,
     },
+    additive,
     async ({
       language,
       image_type,
@@ -290,6 +300,7 @@ export function registerListingTools(
       package_name: packageArg,
       ...writeShape,
     },
+    destructive,
     async ({ language, package_name, validate_only, changes_not_sent_for_review }) => {
       try {
         const pkg = resolvePackage(package_name, defaultPackageName);
@@ -313,6 +324,7 @@ export function registerListingTools(
       package_name: packageArg,
       ...writeShape,
     },
+    destructive,
     async ({ package_name, validate_only, changes_not_sent_for_review }) => {
       try {
         const pkg = resolvePackage(package_name, defaultPackageName);
@@ -342,6 +354,7 @@ export function registerListingTools(
       package_name: packageArg,
       ...writeShape,
     },
+    destructive,
     async ({
       language,
       image_type,
@@ -377,6 +390,7 @@ export function registerListingTools(
       package_name: packageArg,
       ...writeShape,
     },
+    destructive,
     async ({ language, image_type, package_name, validate_only, changes_not_sent_for_review }) => {
       try {
         const pkg = resolvePackage(package_name, defaultPackageName);

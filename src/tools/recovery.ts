@@ -2,7 +2,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { GooglePlayClient } from "../play/client.js";
 import { ok, err, resolvePackage } from "../play/format.js";
-import { packageArg } from "./shared.js";
+import { packageArg, readOnly, additive, destructive } from "./shared.js";
 
 const targetingShape = {
   all_users: z
@@ -52,6 +52,7 @@ export function registerRecoveryTools(
   server: McpServer,
   client: GooglePlayClient,
   defaultPackageName?: string,
+  allowWrites = false,
   allowDestructive = false,
 ) {
   server.tool(
@@ -63,6 +64,7 @@ export function registerRecoveryTools(
         .describe("Version code the recovery actions target, e.g. '415'. Required by the API."),
       package_name: packageArg,
     },
+    readOnly,
     async ({ version_code, package_name }) => {
       try {
         const pkg = resolvePackage(package_name, defaultPackageName);
@@ -74,7 +76,7 @@ export function registerRecoveryTools(
     },
   );
 
-  if (!allowDestructive) return;
+  if (!allowWrites || !allowDestructive) return;
 
   server.tool(
     "create_recovery_action",
@@ -83,6 +85,7 @@ export function registerRecoveryTools(
       ...targetingShape,
       package_name: packageArg,
     },
+    additive,
     async ({ all_users, region_codes, sdk_levels, version_codes, package_name }) => {
       try {
         const pkg = resolvePackage(package_name, defaultPackageName);
@@ -107,6 +110,7 @@ export function registerRecoveryTools(
         .describe("appRecoveryId of the draft action, from list_recovery_actions"),
       package_name: packageArg,
     },
+    destructive,
     async ({ recovery_id, package_name }) => {
       try {
         const pkg = resolvePackage(package_name, defaultPackageName);
@@ -129,6 +133,7 @@ export function registerRecoveryTools(
       ...targetingShape,
       package_name: packageArg,
     },
+    destructive,
     async ({ recovery_id, all_users, region_codes, sdk_levels, version_codes, package_name }) => {
       try {
         const pkg = resolvePackage(package_name, defaultPackageName);
@@ -156,6 +161,7 @@ export function registerRecoveryTools(
       recovery_id: z.string().describe("appRecoveryId of the action, from list_recovery_actions"),
       package_name: packageArg,
     },
+    destructive,
     async ({ recovery_id, package_name }) => {
       try {
         const pkg = resolvePackage(package_name, defaultPackageName);
