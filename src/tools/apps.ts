@@ -2,7 +2,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { GooglePlayClient } from "../play/client.js";
 import { ok, err, resolvePackage } from "../play/format.js";
-import { packageArg } from "./shared.js";
+import { packageArg, readOnly } from "./shared.js";
 
 export function registerAppsTools(
   server: McpServer,
@@ -16,6 +16,7 @@ export function registerAppsTools(
       limit: z.number().int().min(1).max(1000).optional().describe("Max apps (default: 50)"),
       page_token: z.string().optional().describe("nextPageToken from a previous call"),
     },
+    readOnly,
     async ({ limit, page_token }) => {
       try {
         const res = await client.get<{ apps?: unknown[]; nextPageToken?: string }>("/apps:search", {
@@ -35,6 +36,7 @@ export function registerAppsTools(
     {
       package_name: packageArg,
     },
+    readOnly,
     async ({ package_name }) => {
       try {
         const pkg = resolvePackage(package_name, defaultPackageName);

@@ -12,14 +12,15 @@ export function createServer(
   client: GooglePlayClient,
   reportingClient: GooglePlayClient,
   packageName?: string,
+  allowWrites = false,
   allowDestructive = false,
 ): McpServer {
-  const server = new McpServer({ name: "play-console-mcp", version: "0.3.0" });
-  registerReviewTools(server, client, packageName);
-  registerReleaseTools(server, client, packageName);
-  registerListingTools(server, client, packageName, allowDestructive);
+  const server = new McpServer({ name: "play-console-mcp", version: "0.4.0" });
+  registerReviewTools(server, client, packageName, allowWrites);
+  registerReleaseTools(server, client, packageName, allowWrites);
+  registerListingTools(server, client, packageName, allowWrites, allowDestructive);
   registerArtifactTools(server, client, packageName);
-  registerRecoveryTools(server, client, packageName, allowDestructive);
+  registerRecoveryTools(server, client, packageName, allowWrites, allowDestructive);
   registerVitalsTools(server, reportingClient, packageName);
   registerAppsTools(server, reportingClient, packageName);
   return server;

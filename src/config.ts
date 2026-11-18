@@ -5,9 +5,9 @@ const serviceAccountKey = process.env.GOOGLE_SERVICE_ACCOUNT_KEY;
 const serviceAccountKeyPath =
   (process.env.GOOGLE_SERVICE_ACCOUNT_KEY_PATH || "").trim() || undefined;
 const packageName = (process.env.GOOGLE_PLAY_PACKAGE_NAME || "").trim() || undefined;
-const allowDestructive = /^(1|true|yes)$/i.test(
-  (process.env.GOOGLE_PLAY_ALLOW_DESTRUCTIVE || "").trim(),
-);
+const isEnabled = (value?: string) => /^(1|true|yes)$/i.test((value || "").trim());
+const allowWrites = isEnabled(process.env.GOOGLE_PLAY_ALLOW_WRITES);
+const allowDestructive = isEnabled(process.env.GOOGLE_PLAY_ALLOW_DESTRUCTIVE);
 
 if (!serviceAccountKey?.trim() && !serviceAccountKeyPath) {
   console.error(
@@ -18,8 +18,16 @@ if (!serviceAccountKey?.trim() && !serviceAccountKeyPath) {
   process.exit(1);
 }
 
+if (allowDestructive && !allowWrites) {
+  console.error(
+    "GOOGLE_PLAY_ALLOW_DESTRUCTIVE has no effect without GOOGLE_PLAY_ALLOW_WRITES: the server " +
+      "is running read-only.",
+  );
+}
+
 export const config = {
   packageName,
+  allowWrites,
   allowDestructive,
   transport: "stdio" as const,
 };

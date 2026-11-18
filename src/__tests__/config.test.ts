@@ -7,6 +7,7 @@ describe("config", () => {
     vi.stubEnv("GOOGLE_SERVICE_ACCOUNT_KEY_PATH", "");
     vi.stubEnv("GOOGLE_PLAY_PACKAGE_NAME", "");
     vi.stubEnv("GOOGLE_PLAY_ALLOW_DESTRUCTIVE", "");
+    vi.stubEnv("GOOGLE_PLAY_ALLOW_WRITES", "");
   });
   afterEach(() => {
     vi.unstubAllEnvs();
@@ -42,6 +43,39 @@ describe("config", () => {
     expect(config.packageName).toBeUndefined();
   });
 
+  it("keeps write tools disabled unless explicitly opted in", async () => {
+    vi.stubEnv("GOOGLE_SERVICE_ACCOUNT_KEY_PATH", "/tmp/service-account.json");
+    const { config } = await import("../config.js");
+    expect(config.allowWrites).toBe(false);
+  });
+
+  it("enables write tools for 1, true and yes", async () => {
+    for (const value of ["1", "true", "TRUE", "yes"]) {
+      vi.resetModules();
+      vi.stubEnv("GOOGLE_SERVICE_ACCOUNT_KEY_PATH", "/tmp/service-account.json");
+      vi.stubEnv("GOOGLE_PLAY_ALLOW_WRITES", value);
+      const { config } = await import("../config.js");
+      expect(config.allowWrites).toBe(true);
+      expect(config.allowDestructive).toBe(false);
+    }
+  });
+
+  it("ignores other values for the writes flag", async () => {
+    vi.stubEnv("GOOGLE_SERVICE_ACCOUNT_KEY_PATH", "/tmp/service-account.json");
+    vi.stubEnv("GOOGLE_PLAY_ALLOW_WRITES", "0");
+    const { config } = await import("../config.js");
+    expect(config.allowWrites).toBe(false);
+  });
+
+  it("does not enable writes from the destructive flag alone and warns about it", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.stubEnv("GOOGLE_SERVICE_ACCOUNT_KEY_PATH", "/tmp/service-account.json");
+    vi.stubEnv("GOOGLE_PLAY_ALLOW_DESTRUCTIVE", "true");
+    const { config } = await import("../config.js");
+    expect(config.allowWrites).toBe(false);
+    expect(error).toHaveBeenCalledWith(expect.stringContaining("GOOGLE_PLAY_ALLOW_WRITES"));
+  });
+
   it("keeps destructive tools disabled unless explicitly opted in", async () => {
     vi.stubEnv("GOOGLE_SERVICE_ACCOUNT_KEY_PATH", "/tmp/service-account.json");
     const { config } = await import("../config.js");
@@ -52,6 +86,7 @@ describe("config", () => {
     for (const value of ["1", "true", "TRUE", "yes"]) {
       vi.resetModules();
       vi.stubEnv("GOOGLE_SERVICE_ACCOUNT_KEY_PATH", "/tmp/service-account.json");
+      vi.stubEnv("GOOGLE_PLAY_ALLOW_WRITES", "true");
       vi.stubEnv("GOOGLE_PLAY_ALLOW_DESTRUCTIVE", value);
       const { config } = await import("../config.js");
       expect(config.allowDestructive).toBe(true);

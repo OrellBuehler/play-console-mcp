@@ -1,6 +1,6 @@
 {
   "name": "@orellbuehler/play-console-mcp",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "description": "Model Context Protocol server for the Google Play Console: read and reply to user reviews, inspect and promote release tracks, and query crash/ANR vitals over the official Google Play Developer and Play Developer Reporting APIs.",
   "type": "module",
   "bin": {
@@ -22,7 +22,7 @@
     "prepare": "npm run build"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "keywords": [
     "mcp",
@@ -50,9 +50,9 @@
     "access": "public"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.12.1",
+    "@modelcontextprotocol/sdk": "^1.32.2",
     "jose": "^6.0.11",
-    "zod": "^3.24.4"
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

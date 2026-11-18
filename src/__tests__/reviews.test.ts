@@ -4,18 +4,19 @@ import { registerReviewTools } from "../tools/reviews.js";
 
 type Handler = (args: any) => Promise<{ content: { text?: string }[]; isError?: boolean }>;
 
-function collect(defaultPackage?: string) {
+function collect(defaultPackage?: string, allowWrites = true) {
   const tools = new Map<string, Handler>();
   const schemas = new Map<string, any>();
   registerReviewTools(
     {
-      tool: (n: string, _d: string, s: any, h: Handler) => {
+      tool: (n: string, _d: string, s: any, _a: unknown, h: Handler) => {
         tools.set(n, h);
         schemas.set(n, s);
       },
     } as any,
     new GooglePlayClient(async () => "tok"),
     defaultPackage,
+    allowWrites,
   );
   return { tools, schemas };
 }
@@ -117,6 +118,18 @@ describe("review tools", () => {
     expect(schema.reply_text.safeParse("x".repeat(350)).success).toBe(true);
     expect(schema.reply_text.safeParse("x".repeat(351)).success).toBe(false);
     expect(schema.reply_text.safeParse("").success).toBe(false);
+  });
+
+  it("registers reply_to_review only when writes are allowed", () => {
+    expect([...collect("com.acme.app", false).tools.keys()]).toEqual([
+      "list_reviews",
+      "get_review",
+    ]);
+    expect([...collect("com.acme.app", true).tools.keys()]).toEqual([
+      "list_reviews",
+      "get_review",
+      "reply_to_review",
+    ]);
   });
 
   it("errors when no package name is available", async () => {

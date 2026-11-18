@@ -3,7 +3,7 @@ import { z } from "zod";
 import type { GooglePlayClient } from "../play/client.js";
 import { ok, err, resolvePackage } from "../play/format.js";
 import { readWithEdit } from "../play/edits.js";
-import { packageArg } from "./shared.js";
+import { packageArg, readOnly } from "./shared.js";
 
 export function registerArtifactTools(
   server: McpServer,
@@ -16,6 +16,7 @@ export function registerArtifactTools(
     {
       package_name: packageArg,
     },
+    readOnly,
     async ({ package_name }) => {
       try {
         const pkg = resolvePackage(package_name, defaultPackageName);
@@ -33,6 +34,7 @@ export function registerArtifactTools(
     {
       package_name: packageArg,
     },
+    readOnly,
     async ({ package_name }) => {
       try {
         const pkg = resolvePackage(package_name, defaultPackageName);
@@ -53,6 +55,7 @@ export function registerArtifactTools(
         .describe("Version code of the uploaded bundle, e.g. '415'. Get it from list_bundles."),
       package_name: packageArg,
     },
+    readOnly,
     async ({ version_code, package_name }) => {
       try {
         const pkg = resolvePackage(package_name, defaultPackageName);
@@ -76,6 +79,7 @@ export function registerArtifactTools(
         .describe("Which expansion file to read: 'main' or 'patch'"),
       package_name: packageArg,
     },
+    readOnly,
     async ({ apk_version_code, expansion_file_type, package_name }) => {
       try {
         const pkg = resolvePackage(package_name, defaultPackageName);
@@ -105,6 +109,7 @@ export function registerArtifactTools(
       page_token: z.string().optional().describe("nextPageToken from a previous call"),
       package_name: packageArg,
     },
+    readOnly,
     async ({ limit, page_token, package_name }) => {
       try {
         const pkg = resolvePackage(package_name, defaultPackageName);
@@ -128,6 +133,7 @@ export function registerArtifactTools(
         .describe("Id of the device tier config. Get it from list_device_tier_configs."),
       package_name: packageArg,
     },
+    readOnly,
     async ({ device_tier_config_id, package_name }) => {
       try {
         const pkg = resolvePackage(package_name, defaultPackageName);

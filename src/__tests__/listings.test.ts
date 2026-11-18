@@ -8,12 +8,15 @@ vi.mock("node:fs/promises", () => ({ readFile: vi.fn() }));
 
 type Handler = (args: any) => Promise<{ content: { text?: string }[]; isError?: boolean }>;
 
-function collect(defaultPackage?: string, allowDestructive = true) {
+function collect(defaultPackage?: string, allowWrites = true, allowDestructive = true) {
   const tools = new Map<string, Handler>();
   registerListingTools(
-    { tool: (n: string, _d: string, _s: unknown, h: Handler) => tools.set(n, h) } as any,
+    {
+      tool: (n: string, _d: string, _s: unknown, _a: unknown, h: Handler) => tools.set(n, h),
+    } as any,
     new GooglePlayClient(async () => "tok"),
     defaultPackage,
+    allowWrites,
     allowDestructive,
   );
   return tools;
@@ -246,15 +249,37 @@ describe("listing tools", () => {
     );
   });
 
+  it("registers only read tools when writes are not allowed", () => {
+    const reads = ["list_listings", "get_listing", "get_app_details", "list_listing_images"];
+    expect([...collect("com.acme.app", false, false).keys()]).toEqual(reads);
+    expect([...collect("com.acme.app", false, true).keys()]).toEqual(reads);
+  });
+
   it("does not register deletes or uploads when destructive tools are not allowed", () => {
-    const guarded = collect("com.acme.app", false);
+    const guarded = collect("com.acme.app", true, false);
     expect([...guarded.keys()]).toEqual([
       "list_listings",
       "get_listing",
-      "update_listing",
       "get_app_details",
-      "update_app_details",
       "list_listing_images",
+      "update_listing",
+      "update_app_details",
+    ]);
+  });
+
+  it("registers every tool when writes and destructive tools are allowed", () => {
+    expect([...collect("com.acme.app", true, true).keys()]).toEqual([
+      "list_listings",
+      "get_listing",
+      "get_app_details",
+      "list_listing_images",
+      "update_listing",
+      "update_app_details",
+      "upload_listing_image",
+      "delete_listing",
+      "delete_all_listings",
+      "delete_listing_image",
+      "delete_all_listing_images",
     ]);
   });
 

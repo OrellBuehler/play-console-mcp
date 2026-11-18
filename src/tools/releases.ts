@@ -3,7 +3,14 @@ import { z } from "zod";
 import type { GooglePlayClient } from "../play/client.js";
 import { ok, err, resolvePackage } from "../play/format.js";
 import { readWithEdit, withEdit } from "../play/edits.js";
-import { packageArg, writeShape, releaseNotesSchema } from "./shared.js";
+import {
+  packageArg,
+  writeShape,
+  releaseNotesSchema,
+  readOnly,
+  additive,
+  destructive,
+} from "./shared.js";
 
 export interface Release {
   name?: string;
@@ -78,6 +85,7 @@ export function registerReleaseTools(
   server: McpServer,
   client: GooglePlayClient,
   defaultPackageName?: string,
+  allowWrites = false,
 ) {
   server.tool(
     "list_tracks",
@@ -85,6 +93,7 @@ export function registerReleaseTools(
     {
       package_name: packageArg,
     },
+    readOnly,
     async ({ package_name }) => {
       try {
         const pkg = resolvePackage(package_name, defaultPackageName);
@@ -108,6 +117,7 @@ export function registerReleaseTools(
         .describe("Track name: 'internal', 'alpha', 'beta', 'production' or a custom track name"),
       package_name: packageArg,
     },
+    readOnly,
     async ({ track, package_name }) => {
       try {
         const pkg = resolvePackage(package_name, defaultPackageName);
@@ -130,6 +140,7 @@ export function registerReleaseTools(
         .describe("Track name: 'internal', 'alpha', 'beta', 'production' or a custom track name"),
       package_name: packageArg,
     },
+    readOnly,
     async ({ track, package_name }) => {
       try {
         const pkg = resolvePackage(package_name, defaultPackageName);
@@ -142,6 +153,50 @@ export function registerReleaseTools(
       }
     },
   );
+
+  server.tool(
+    "get_country_availability",
+    "Get the countries a track is available in, including whether the app is restricted to a country list and which countries are included. Read-only; change targeting with the country_targeting argument of create_release or promote_release.",
+    {
+      track: z.string().describe("Track to check, e.g. 'production'"),
+      package_name: packageArg,
+    },
+    readOnly,
+    async ({ track, package_name }) => {
+      try {
+        const pkg = resolvePackage(package_name, defaultPackageName);
+        const res = await readWithEdit(client, pkg, (base) =>
+          client.get(`${base}/countryAvailability/${encodeURIComponent(track)}`),
+        );
+        return ok(res);
+      } catch (e) {
+        return err(e);
+      }
+    },
+  );
+
+  server.tool(
+    "get_testers",
+    "Get the Google Groups that have access to a closed testing track, returned as googleGroups. Only applies to closed tracks (alpha and custom tracks), not to internal or production.",
+    {
+      track: z.string().describe("Closed track to read testers for, e.g. 'alpha' or 'qa-team'"),
+      package_name: packageArg,
+    },
+    readOnly,
+    async ({ track, package_name }) => {
+      try {
+        const pkg = resolvePackage(package_name, defaultPackageName);
+        const res = await readWithEdit(client, pkg, (base) =>
+          client.get(`${base}/testers/${encodeURIComponent(track)}`),
+        );
+        return ok(res);
+      } catch (e) {
+        return err(e);
+      }
+    },
+  );
+
+  if (!allowWrites) return;
 
   server.tool(
     "promote_release",
@@ -167,6 +222,7 @@ export function registerReleaseTools(
       package_name: packageArg,
       ...writeShape,
     },
+    destructive,
     async ({
       from_track,
       to_track,
@@ -235,6 +291,7 @@ export function registerReleaseTools(
       package_name: packageArg,
       ...writeShape,
     },
+    destructive,
     async ({ track, user_fraction, package_name, validate_only, changes_not_sent_for_review }) => {
       try {
         const pkg = resolvePackage(package_name, defaultPackageName);
@@ -279,6 +336,7 @@ export function registerReleaseTools(
       package_name: packageArg,
       ...writeShape,
     },
+    destructive,
     async ({ track, package_name, validate_only, changes_not_sent_for_review }) => {
       try {
         const pkg = resolvePackage(package_name, defaultPackageName);
@@ -346,6 +404,7 @@ export function registerReleaseTools(
       package_name: packageArg,
       ...writeShape,
     },
+    destructive,
     async ({
       track,
       version_codes,
@@ -404,6 +463,7 @@ export function registerReleaseTools(
       package_name: packageArg,
       ...writeShape,
     },
+    destructive,
     async ({ track, release_notes, package_name, validate_only, changes_not_sent_for_review }) => {
       try {
         const pkg = resolvePackage(package_name, defaultPackageName);
@@ -446,6 +506,7 @@ export function registerReleaseTools(
       package_name: packageArg,
       ...writeShape,
     },
+    additive,
     async ({ track, form_factor, package_name, validate_only, changes_not_sent_for_review }) => {
       try {
         const pkg = resolvePackage(package_name, defaultPackageName);
@@ -468,46 +529,6 @@ export function registerReleaseTools(
   );
 
   server.tool(
-    "get_country_availability",
-    "Get the countries a track is available in, including whether the app is restricted to a country list and which countries are included. Read-only; change targeting with the country_targeting argument of create_release or promote_release.",
-    {
-      track: z.string().describe("Track to check, e.g. 'production'"),
-      package_name: packageArg,
-    },
-    async ({ track, package_name }) => {
-      try {
-        const pkg = resolvePackage(package_name, defaultPackageName);
-        const res = await readWithEdit(client, pkg, (base) =>
-          client.get(`${base}/countryAvailability/${encodeURIComponent(track)}`),
-        );
-        return ok(res);
-      } catch (e) {
-        return err(e);
-      }
-    },
-  );
-
-  server.tool(
-    "get_testers",
-    "Get the Google Groups that have access to a closed testing track, returned as googleGroups. Only applies to closed tracks (alpha and custom tracks), not to internal or production.",
-    {
-      track: z.string().describe("Closed track to read testers for, e.g. 'alpha' or 'qa-team'"),
-      package_name: packageArg,
-    },
-    async ({ track, package_name }) => {
-      try {
-        const pkg = resolvePackage(package_name, defaultPackageName);
-        const res = await readWithEdit(client, pkg, (base) =>
-          client.get(`${base}/testers/${encodeURIComponent(track)}`),
-        );
-        return ok(res);
-      } catch (e) {
-        return err(e);
-      }
-    },
-  );
-
-  server.tool(
     "update_testers",
     "Set the Google Groups that have access to a closed testing track. This replaces the full list, so include every group you want to keep — use get_testers first. Only applies to closed tracks (alpha and custom tracks).",
     {
@@ -520,6 +541,7 @@ export function registerReleaseTools(
       package_name: packageArg,
       ...writeShape,
     },
+    destructive,
     async ({ track, google_groups, package_name, validate_only, changes_not_sent_for_review }) => {
       try {
         const pkg = resolvePackage(package_name, defaultPackageName);

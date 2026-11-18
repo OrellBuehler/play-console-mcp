@@ -34,19 +34,21 @@ npx vitest run -t "promote_release"
 ```
 
 CI (`.github/workflows/ci.yml`) runs `format:check`, `lint`, `typecheck`, and `test` + `build` on
-Node 20 and 22 — all must pass. Run them locally before committing.
+Node 22 and 24 — all must pass. Run them locally before committing.
 
 ## Architecture
 
 Request flow: `index.ts` reads config, builds the server via `server.ts:createServer(client,
-reportingClient, packageName, allowDestructive)`, and connects it over stdio. Each tool calls one of
+reportingClient, packageName, allowWrites, allowDestructive)`, and connects it over stdio. Each tool calls one of
 the two REST clients.
 
 - **`src/index.ts`** — entry point. Stdio transport only (single-account).
 - **`src/config.ts`** — reads env at import time and **exits the process** if neither
   `GOOGLE_SERVICE_ACCOUNT_KEY` nor `GOOGLE_SERVICE_ACCOUNT_KEY_PATH` is set. Exports `config`
-  (including `allowDestructive` from `GOOGLE_PLAY_ALLOW_DESTRUCTIVE`), `client` (androidpublisher)
-  and `reportingClient` (Play Developer Reporting).
+  (including `allowWrites` from `GOOGLE_PLAY_ALLOW_WRITES` and `allowDestructive` from
+  `GOOGLE_PLAY_ALLOW_DESTRUCTIVE`, both off by default), `client` (androidpublisher) and
+  `reportingClient` (Play Developer Reporting). Warns on stderr when the destructive flag is set
+  without the writes flag, since it then has no effect.
 - **`src/play/auth.ts`** — `createTokenProvider(auth)`: signs an RS256 service-account JWT with
   `jose` and exchanges it at `https://oauth2.googleapis.com/token` for an OAuth access token, cached
   until expiry with a 60 s buffer. The JWT carries **both** scopes (`androidpublisher` and
@@ -67,19 +69,27 @@ the two REST clients.
   throwing a helpful error if neither is set).
 - **`src/tools/*.ts`** — each exports a `register*Tools(server, client, packageName?)` function that
   `server.ts` calls: `reviews`, `releases`, `listings`, `artifacts`, `recovery` (all on the publisher
-  client), `vitals` and `apps` (on the reporting client). `listings` and `recovery` take a fourth
-  `allowDestructive` argument.
+  client), `vitals` and `apps` (on the reporting client). `reviews` and `releases` take a fourth
+  `allowWrites` argument; `listings` and `recovery` take `allowWrites` and `allowDestructive`.
 - **`src/tools/shared.ts`** — Zod shapes reused across tool modules: `packageArg`, `writeShape`
-  (`validate_only` + `changes_not_sent_for_review`) and `releaseNotesSchema`. Reuse these instead of
-  redeclaring them.
+  (`validate_only` + `changes_not_sent_for_review`) and `releaseNotesSchema`, plus the tool
+  annotation presets (`readOnly`, `additive`, `destructive`) and `UNTRUSTED_NOTE`. Reuse these
+  instead of redeclaring them.
 
 ## Conventions
 
 - **ESM with Node16 module resolution: all relative imports must end in `.js`** (e.g.
   `import { ok } from "../play/format.js"`), even though the source is `.ts`.
-- **Tool handler shape:** `server.tool(name, description, zodShape, async (args) => { try { return
-ok(...); } catch (e) { return err(e); } })`. The third argument is a raw Zod shape object. Match this
-  try/catch-`ok`/`err` style exactly.
+- **Tool handler shape:** `server.tool(name, description, zodShape, annotations, async (args) => {
+try { return ok(...); } catch (e) { return err(e); } })`. The third argument is a raw Zod shape
+  object. Match this try/catch-`ok`/`err` style exactly.
+- **Every tool has annotations**, taken from the presets in `tools/shared.ts`: `readOnly` for reads,
+  `additive` for writes that only add (`create_track`, `create_recovery_action`,
+  `upload_listing_image`), `destructive` for anything that overwrites, deletes or cannot be undone.
+  `server.test.ts` fails when a tool has none.
+- **Text written by strangers is untrusted.** Reviews and error reports can carry prompt injection.
+  Any tool returning such text appends `UNTRUSTED_NOTE` to its description, and `server.test.ts`
+  asserts the exact list of tools that do.
 - **Tool args are snake_case** and every field gets a `.describe(...)`. Descriptions are long and
   agent-facing: name the fields that come back, state defaults and limits, and cross-reference
   sibling tools ("Get review IDs from list_reviews").
@@ -92,11 +102,16 @@ ok(...); } catch (e) { return err(e); } })`. The third argument is a raw Zod sha
   edits (including listing images), and app recovery actions. Do **not** add AAB/APK/deobfuscation
   upload, in-app products/subscriptions, app creation, or user/permission management. Every write
   tool that goes through the edits workflow must keep supporting `validate_only`.
-- **Destructive tools are opt-in.** Deletes, listing image uploads, and app recovery writes are only
-  registered when `allowDestructive` is true (`GOOGLE_PLAY_ALLOW_DESTRUCTIVE`). Implemented as an
-  early `if (!allowDestructive) return;` in the register function, with the gated tools after it, so
-  the gating is one obvious line rather than a per-tool condition. Any new delete, binary upload, or
-  irreversible non-edits-workflow write goes below that line.
+- **Writes are opt-in, and the server is read-only by default.** Write tools are only registered
+  when `allowWrites` is true (`GOOGLE_PLAY_ALLOW_WRITES`), because they sit next to untrusted review
+  text. Implemented as an early `if (!allowWrites) return;` in the register function, with the read
+  tools above it and every write tool below it, so the gating is one obvious line rather than a
+  per-tool condition.
+- **Destructive tools need a second opt-in.** Deletes, listing image uploads, and app recovery
+  writes are only registered when `allowDestructive` is true (`GOOGLE_PLAY_ALLOW_DESTRUCTIVE`) as
+  well, via a second early `if (!allowDestructive) return;` below the writes gate. The destructive
+  flag does not imply the writes flag: on its own it registers nothing. Any new delete, binary
+  upload, or irreversible non-edits-workflow write goes below that second line.
 - **Secrets:** the repo is public. Never log the service account key or access tokens; only read
   them from env. Tests use a locally generated throwaway RSA key.
 
@@ -112,7 +127,11 @@ empty bodies and error handling; `auth.test.ts` signs with a generated RSA key a
 header/claims, both scopes and token caching; `config.ts` reads env at import time and exits if it's
 missing, so `config.test.ts` `vi.resetModules()` + `vi.stubEnv(...)` then dynamically `import()`s it.
 
-Gated modules (`listings`, `recovery`) take `allowDestructive` as the fourth argument of the test
-`collect()` helper and assert the **exact list of registered tool names** when it is false, so a new
-destructive tool added above the gate fails the test. `listings.test.ts` `vi.mock`s
+The fake server's `tool` takes five arguments (name, description, schema, annotations, handler).
+Gated modules (`reviews`, `releases`, `listings`, `recovery`) take `allowWrites` (and
+`allowDestructive`) as extra arguments of the test `collect()` helper, defaulting to true, and assert
+the **exact list of registered tool names** at each gate level, so a new write tool added above a
+gate fails the test. `server.test.ts` connects a real `McpServer` to an in-memory client and asserts
+the full tool list per gate level, that every tool carries annotations, and which tools are flagged
+as returning untrusted text. `listings.test.ts` `vi.mock`s
 `node:fs/promises` to stub `readFile` for the image upload path.

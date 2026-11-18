@@ -4,12 +4,15 @@ import { registerReleaseTools } from "../tools/releases.js";
 
 type Handler = (args: any) => Promise<{ content: { text?: string }[]; isError?: boolean }>;
 
-function collect(defaultPackage?: string) {
+function collect(defaultPackage?: string, allowWrites = true) {
   const tools = new Map<string, Handler>();
   registerReleaseTools(
-    { tool: (n: string, _d: string, _s: unknown, h: Handler) => tools.set(n, h) } as any,
+    {
+      tool: (n: string, _d: string, _s: unknown, _a: unknown, h: Handler) => tools.set(n, h),
+    } as any,
     new GooglePlayClient(async () => "tok"),
     defaultPackage,
+    allowWrites,
   );
   return tools;
 }
@@ -520,6 +523,33 @@ describe("release tools", () => {
     expect(JSON.parse(mockFetch.mock.calls[1][1].body)).toEqual({
       googleGroups: ["qa@acme.com"],
     });
+  });
+
+  it("registers only read tools when writes are not allowed", () => {
+    expect([...collect("com.acme.app", false).keys()]).toEqual([
+      "list_tracks",
+      "get_track",
+      "list_releases",
+      "get_country_availability",
+      "get_testers",
+    ]);
+  });
+
+  it("registers the release writes when writes are allowed", () => {
+    expect([...collect("com.acme.app", true).keys()]).toEqual([
+      "list_tracks",
+      "get_track",
+      "list_releases",
+      "get_country_availability",
+      "get_testers",
+      "promote_release",
+      "update_rollout",
+      "halt_rollout",
+      "create_release",
+      "update_release_notes",
+      "create_track",
+      "update_testers",
+    ]);
   });
 
   it("errors when no package name is available", async () => {

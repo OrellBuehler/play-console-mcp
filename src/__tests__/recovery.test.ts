@@ -4,12 +4,15 @@ import { registerRecoveryTools } from "../tools/recovery.js";
 
 type Handler = (args: any) => Promise<{ content: { text?: string }[]; isError?: boolean }>;
 
-function collect(defaultPackage?: string, allowDestructive = true) {
+function collect(defaultPackage?: string, allowWrites = true, allowDestructive = true) {
   const tools = new Map<string, Handler>();
   registerRecoveryTools(
-    { tool: (n: string, _d: string, _s: unknown, h: Handler) => tools.set(n, h) } as any,
+    {
+      tool: (n: string, _d: string, _s: unknown, _a: unknown, h: Handler) => tools.set(n, h),
+    } as any,
     new GooglePlayClient(async () => "tok"),
     defaultPackage,
+    allowWrites,
     allowDestructive,
   );
   return tools;
@@ -109,9 +112,20 @@ describe("recovery tools", () => {
     });
   });
 
-  it("registers only the read tool when destructive tools are not allowed", () => {
-    const guarded = collect("com.acme.app", false);
-    expect([...guarded.keys()]).toEqual(["list_recovery_actions"]);
+  it("registers only the read tool unless writes and destructive tools are both allowed", () => {
+    expect([...collect("com.acme.app", false, false).keys()]).toEqual(["list_recovery_actions"]);
+    expect([...collect("com.acme.app", true, false).keys()]).toEqual(["list_recovery_actions"]);
+    expect([...collect("com.acme.app", false, true).keys()]).toEqual(["list_recovery_actions"]);
+  });
+
+  it("registers the recovery writes when writes and destructive tools are allowed", () => {
+    expect([...collect("com.acme.app", true, true).keys()]).toEqual([
+      "list_recovery_actions",
+      "create_recovery_action",
+      "deploy_recovery_action",
+      "add_recovery_targeting",
+      "cancel_recovery_action",
+    ]);
   });
 
   it("errors when no package name is available", async () => {
