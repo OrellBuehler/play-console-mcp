@@ -68,11 +68,12 @@ the two REST clients.
   unquoted) and `resolvePackage` (per-tool `package_name` overriding `GOOGLE_PLAY_PACKAGE_NAME`,
   throwing a helpful error if neither is set).
 - **`src/tools/*.ts`** — each exports a `register*Tools(server, client, packageName?)` function that
-  `server.ts` calls: `reviews`, `releases`, `listings`, `artifacts`, `recovery` (all on the publisher
-  client), `vitals` and `apps` (on the reporting client). `reviews` and `releases` take a fourth
-  `allowWrites` argument; `listings` and `recovery` take `allowWrites` and `allowDestructive`.
+  `server.ts` calls: `reviews`, `releases`, `listings`, `artifacts`, `recovery`, `datasafety` (all on
+  the publisher client), `vitals` and `apps` (on the reporting client). `reviews` and `releases` take
+  a fourth `allowWrites` argument; `listings`, `recovery` and `datasafety` take `allowWrites` and
+  `allowDestructive`.
 - **`src/tools/shared.ts`** — Zod shapes reused across tool modules: `packageArg`, `writeShape`
-  (`validate_only` + `changes_not_sent_for_review`) and `releaseNotesSchema`, plus the tool
+  (`validate_only`, `changes_not_sent_for_review` and `changes_in_review_behavior`) and `releaseNotesSchema`, plus the tool
   annotation presets (`readOnly`, `additive`, `destructive`) and `UNTRUSTED_NOTE`. Reuse these
   instead of redeclaring them.
 
@@ -99,7 +100,7 @@ try { return ok(...); } catch (e) { return err(e); } })`. The third argument is 
 - **Don't add comments, docstrings, or type annotations** unless they already exist in the file
   you're editing (per global preference).
 - **Scope of writes:** review replies, release/track/tester management, store listing and metadata
-  edits (including listing images), and app recovery actions. Do **not** add AAB/APK/deobfuscation
+  edits (including listing images), app recovery actions, and the Data safety declaration. Do **not** add AAB/APK/deobfuscation
   upload, in-app products/subscriptions, app creation, or user/permission management. Every write
   tool that goes through the edits workflow must keep supporting `validate_only`.
 - **Writes are opt-in, and the server is read-only by default.** Write tools are only registered
@@ -107,8 +108,8 @@ try { return ok(...); } catch (e) { return err(e); } })`. The third argument is 
   text. Implemented as an early `if (!allowWrites) return;` in the register function, with the read
   tools above it and every write tool below it, so the gating is one obvious line rather than a
   per-tool condition.
-- **Destructive tools need a second opt-in.** Deletes, listing image uploads, and app recovery
-  writes are only registered when `allowDestructive` is true (`GOOGLE_PLAY_ALLOW_DESTRUCTIVE`) as
+- **Destructive tools need a second opt-in.** Deletes, listing image uploads, app recovery writes
+  and the Data safety update are only registered when `allowDestructive` is true (`GOOGLE_PLAY_ALLOW_DESTRUCTIVE`) as
   well, via a second early `if (!allowDestructive) return;` below the writes gate. The destructive
   flag does not imply the writes flag: on its own it registers nothing. Any new delete, binary
   upload, or irreversible non-edits-workflow write goes below that second line.
@@ -128,10 +129,10 @@ header/claims, both scopes and token caching; `config.ts` reads env at import ti
 missing, so `config.test.ts` `vi.resetModules()` + `vi.stubEnv(...)` then dynamically `import()`s it.
 
 The fake server's `tool` takes five arguments (name, description, schema, annotations, handler).
-Gated modules (`reviews`, `releases`, `listings`, `recovery`) take `allowWrites` (and
+Gated modules (`reviews`, `releases`, `listings`, `recovery`, `datasafety`) take `allowWrites` (and
 `allowDestructive`) as extra arguments of the test `collect()` helper, defaulting to true, and assert
 the **exact list of registered tool names** at each gate level, so a new write tool added above a
 gate fails the test. `server.test.ts` connects a real `McpServer` to an in-memory client and asserts
 the full tool list per gate level, that every tool carries annotations, and which tools are flagged
-as returning untrusted text. `listings.test.ts` `vi.mock`s
-`node:fs/promises` to stub `readFile` for the image upload path.
+as returning untrusted text. `listings.test.ts` and `datasafety.test.ts` `vi.mock`
+`node:fs/promises` to stub `readFile` for the file upload paths.

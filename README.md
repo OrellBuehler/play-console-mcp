@@ -21,8 +21,8 @@ recovery action, and checking crash, ANR, memory and battery vitals before and a
 > (that is the unrelated [Android Management API](https://developers.google.com/android/management)).
 
 > **The server is read-only by default.** Write tools (review replies, release, rollout, tester and
-> listing changes) are only registered when `GOOGLE_PLAY_ALLOW_WRITES` is set. Deletes, image uploads
-> and app recovery writes additionally need `GOOGLE_PLAY_ALLOW_DESTRUCTIVE` — see
+> listing changes) are only registered when `GOOGLE_PLAY_ALLOW_WRITES` is set. Deletes, image uploads,
+> app recovery writes and the Data safety update additionally need `GOOGLE_PLAY_ALLOW_DESTRUCTIVE` — see
 > [Configuration](#configuration) and [Security](#security).
 
 > **Breaking change in 0.4.0:** writes used to be registered unconditionally. If you rely on
@@ -64,6 +64,7 @@ only picked up when you choose to update.
      `update_testers`, and the app recovery tools)
    - **Edit store listing, pricing & distribution** (for `update_listing`, `update_app_details` and
      the listing image tools)
+   - **Manage policy declarations** (for `update_data_safety`)
 6. Point `GOOGLE_SERVICE_ACCOUNT_KEY_PATH` at the downloaded JSON file.
 
 You no longer need to link your Play developer account to a Google Cloud project to use the API.
@@ -75,13 +76,13 @@ Permission changes can take a few minutes to propagate. Until they do, calls fai
 
 ## Configuration
 
-| Variable                          | Required | Description                                                                                                                                            |
-| --------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `GOOGLE_SERVICE_ACCOUNT_KEY_PATH` | one of   | Path to the downloaded service account JSON key                                                                                                        |
-| `GOOGLE_SERVICE_ACCOUNT_KEY`      | one of   | The service account JSON key inline, as a raw JSON string                                                                                              |
-| `GOOGLE_PLAY_PACKAGE_NAME`        | no       | Default app package name, so tools can omit `package_name`                                                                                             |
-| `GOOGLE_PLAY_ALLOW_WRITES`        | no       | Set to `1`, `true` or `yes` to register the write tools. Off by default: the server is read-only                                                       |
-| `GOOGLE_PLAY_ALLOW_DESTRUCTIVE`   | no       | Set to `1`, `true` or `yes` to also register the delete, image upload and recovery write tools. Has no effect unless `GOOGLE_PLAY_ALLOW_WRITES` is set |
+| Variable                          | Required | Description                                                                                                                                                         |
+| --------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GOOGLE_SERVICE_ACCOUNT_KEY_PATH` | one of   | Path to the downloaded service account JSON key                                                                                                                     |
+| `GOOGLE_SERVICE_ACCOUNT_KEY`      | one of   | The service account JSON key inline, as a raw JSON string                                                                                                           |
+| `GOOGLE_PLAY_PACKAGE_NAME`        | no       | Default app package name, so tools can omit `package_name`                                                                                                          |
+| `GOOGLE_PLAY_ALLOW_WRITES`        | no       | Set to `1`, `true` or `yes` to register the write tools. Off by default: the server is read-only                                                                    |
+| `GOOGLE_PLAY_ALLOW_DESTRUCTIVE`   | no       | Set to `1`, `true` or `yes` to also register the delete, image upload, recovery write and Data safety tools. Has no effect unless `GOOGLE_PLAY_ALLOW_WRITES` is set |
 
 ## Security
 
@@ -92,8 +93,8 @@ rollout" is a prompt injection attempt, so the server limits what such text can 
 - **Read-only by default.** Without `GOOGLE_PLAY_ALLOW_WRITES` no tool can change anything in the
   Play Console. Leave it unset for review triage and vitals analysis, and enable it only in the
   sessions where you actually release or reply.
-- **Destructive tools need both flags.** Deletes, image uploads and app recovery writes are only
-  registered when `GOOGLE_PLAY_ALLOW_WRITES` and `GOOGLE_PLAY_ALLOW_DESTRUCTIVE` are both set.
+- **Destructive tools need both flags.** Deletes, image uploads, app recovery writes and the Data
+  safety update are only registered when `GOOGLE_PLAY_ALLOW_WRITES` and `GOOGLE_PLAY_ALLOW_DESTRUCTIVE` are both set.
 - **Tool annotations.** Every tool declares `readOnlyHint`, `destructiveHint`, `idempotentHint` and
   `openWorldHint`, so MCP clients can ask for confirmation before a write.
 - **Untrusted text is labelled.** `list_reviews`, `get_review`, `search_error_issues` and
@@ -123,8 +124,8 @@ rollout" is a prompt injection attempt, so the server limits what such text can 
 ```
 
 This is the read-only setup. To register the write tools, add `"GOOGLE_PLAY_ALLOW_WRITES": "true"`
-to `env`, and `"GOOGLE_PLAY_ALLOW_DESTRUCTIVE": "true"` on top of it for deletes, image uploads and
-app recovery writes.
+to `env`, and `"GOOGLE_PLAY_ALLOW_DESTRUCTIVE": "true"` on top of it for deletes, image uploads,
+app recovery writes and the Data safety update.
 
 ## Example prompts
 
@@ -135,6 +136,8 @@ app recovery writes.
 - "Ship version code 415 to the internal track with release notes saying 'adds offline mode'."
 - "Fix the typo in the German release notes on production without touching the rollout."
 - "Show me the current English store listing and shorten the tagline to fit 80 characters."
+- "Update the store listing, but fail instead of cancelling the release that is still in review."
+- "Apply the Data safety answers in ~/safety.csv to the app."
 - "The crash rate spiked — halt the production rollout."
 - "Compare the crash rate for version code 415 against 414 over the last two weeks."
 - "Show me the top crash issues by affected users and the stack trace for the worst one."
@@ -211,10 +214,18 @@ version codes to `create_release`.
 | `add_recovery_targeting` | Widen the targeting of an existing recovery action                    | destructive |
 | `cancel_recovery_action` | Cancel a recovery action                                              | destructive |
 
+### Data safety
+
+| Tool                 | Description                                                       | Opt-in      |
+| -------------------- | ----------------------------------------------------------------- | ----------- |
+| `update_data_safety` | Replace the app's Data safety declaration from a Play Console CSV | destructive |
+
 Every write tool that goes through the Play edits workflow accepts `validate_only: true` for a dry
-run — the change is validated against the API and then discarded instead of being committed. The
-app recovery tools are outside that workflow and have no dry run, which is why their writes need
-`GOOGLE_PLAY_ALLOW_DESTRUCTIVE` as well.
+run — the change is validated against the API and then discarded instead of being committed. They
+also accept `changes_in_review_behavior`: Google's default (`CANCEL_IN_REVIEW_AND_SUBMIT`) cancels
+a review that is already running and submits everything together, while `ERROR_IF_IN_REVIEW` makes
+the commit fail instead. The app recovery and Data safety tools are outside that workflow and have
+no dry run, which is why their writes need `GOOGLE_PLAY_ALLOW_DESTRUCTIVE` as well.
 
 ### Vitals
 
@@ -259,6 +270,13 @@ app recovery tools are outside that workflow and have no dry run, which is why t
   read the current value first and include everything you want to keep.
 - **Store listing limits are Google's:** title 30 characters, short description 80, full description
   4000, release notes 500 per locale, listing images 15 MB and PNG or JPEG only.
+- **Committing cancels a running review by default.** Any committed edit — even a listing typo fix —
+  pulls changes that are currently in review back and resubmits them together. Pass
+  `changes_in_review_behavior: "ERROR_IF_IN_REVIEW"` to fail instead, and check the review state
+  with `list_releases`.
+- **The Data safety declaration is write-only.** `update_data_safety` overwrites the whole
+  declaration from a CSV in Google's format and the API cannot read it back; export the current CSV
+  from Play Console > App content > Data safety first and keep it as a backup.
 - **App recovery actions are user-visible and have no dry run.** `deploy_recovery_action` pushes a
   remote in-app update immediately; confirm the targeting with `list_recovery_actions` first.
 - **Vitals data lags.** Android vitals metrics are aggregated daily in `America/Los_Angeles` and are

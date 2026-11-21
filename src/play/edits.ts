@@ -3,6 +3,7 @@ import type { GooglePlayClient } from "./client.js";
 export interface EditOptions {
   validateOnly?: boolean;
   changesNotSentForReview?: boolean;
+  changesInReviewBehavior?: string;
 }
 
 interface AppEdit {
@@ -43,11 +44,10 @@ export async function withEdit<T>(
       await client.del(editPath).catch(() => {});
       return { result, committed: false };
     }
-    await client.post(
-      `${editPath}:commit`,
-      undefined,
-      options.changesNotSentForReview ? { changesNotSentForReview: true } : undefined,
-    );
+    await client.post(`${editPath}:commit`, undefined, {
+      changesNotSentForReview: options.changesNotSentForReview ? true : undefined,
+      changesInReviewBehavior: options.changesInReviewBehavior,
+    });
     return { result, committed: true };
   } catch (e) {
     await client.del(editPath).catch(() => {});

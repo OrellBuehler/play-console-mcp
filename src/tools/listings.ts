@@ -169,6 +169,7 @@ export function registerListingTools(
       package_name,
       validate_only,
       changes_not_sent_for_review,
+      changes_in_review_behavior,
     }) => {
       try {
         const pkg = resolvePackage(package_name, defaultPackageName);
@@ -183,7 +184,11 @@ export function registerListingTools(
           client,
           pkg,
           (base) => client.patch(`${base}/listings/${encodeURIComponent(language)}`, body),
-          { validateOnly: validate_only, changesNotSentForReview: changes_not_sent_for_review },
+          {
+            validateOnly: validate_only,
+            changesNotSentForReview: changes_not_sent_for_review,
+            changesInReviewBehavior: changes_in_review_behavior,
+          },
         );
         return ok({ committed, validatedOnly: !committed, listing: result });
       } catch (e) {
@@ -220,6 +225,7 @@ export function registerListingTools(
       package_name,
       validate_only,
       changes_not_sent_for_review,
+      changes_in_review_behavior,
     }) => {
       try {
         const pkg = resolvePackage(package_name, defaultPackageName);
@@ -233,7 +239,11 @@ export function registerListingTools(
           client,
           pkg,
           (base) => client.patch(`${base}/details`, body),
-          { validateOnly: validate_only, changesNotSentForReview: changes_not_sent_for_review },
+          {
+            validateOnly: validate_only,
+            changesNotSentForReview: changes_not_sent_for_review,
+            changesInReviewBehavior: changes_in_review_behavior,
+          },
         );
         return ok({ committed, validatedOnly: !committed, details: result });
       } catch (e) {
@@ -264,6 +274,7 @@ export function registerListingTools(
       package_name,
       validate_only,
       changes_not_sent_for_review,
+      changes_in_review_behavior,
     }) => {
       try {
         const pkg = resolvePackage(package_name, defaultPackageName);
@@ -283,7 +294,11 @@ export function registerListingTools(
               bytes,
               contentType,
             ),
-          { validateOnly: validate_only, changesNotSentForReview: changes_not_sent_for_review },
+          {
+            validateOnly: validate_only,
+            changesNotSentForReview: changes_not_sent_for_review,
+            changesInReviewBehavior: changes_in_review_behavior,
+          },
         );
         return ok({ committed, validatedOnly: !committed, image: result });
       } catch (e) {
@@ -301,14 +316,24 @@ export function registerListingTools(
       ...writeShape,
     },
     destructive,
-    async ({ language, package_name, validate_only, changes_not_sent_for_review }) => {
+    async ({
+      language,
+      package_name,
+      validate_only,
+      changes_not_sent_for_review,
+      changes_in_review_behavior,
+    }) => {
       try {
         const pkg = resolvePackage(package_name, defaultPackageName);
         const { committed } = await withEdit(
           client,
           pkg,
           (base) => client.del(`${base}/listings/${encodeURIComponent(language)}`),
-          { validateOnly: validate_only, changesNotSentForReview: changes_not_sent_for_review },
+          {
+            validateOnly: validate_only,
+            changesNotSentForReview: changes_not_sent_for_review,
+            changesInReviewBehavior: changes_in_review_behavior,
+          },
         );
         return ok({ committed, validatedOnly: !committed, deletedListing: language });
       } catch (e) {
@@ -325,7 +350,12 @@ export function registerListingTools(
       ...writeShape,
     },
     destructive,
-    async ({ package_name, validate_only, changes_not_sent_for_review }) => {
+    async ({
+      package_name,
+      validate_only,
+      changes_not_sent_for_review,
+      changes_in_review_behavior,
+    }) => {
       try {
         const pkg = resolvePackage(package_name, defaultPackageName);
         const { committed } = await withEdit(
@@ -335,6 +365,7 @@ export function registerListingTools(
           {
             validateOnly: validate_only,
             changesNotSentForReview: changes_not_sent_for_review,
+            changesInReviewBehavior: changes_in_review_behavior,
           },
         );
         return ok({ committed, validatedOnly: !committed, deletedAllListings: true });
@@ -362,6 +393,7 @@ export function registerListingTools(
       package_name,
       validate_only,
       changes_not_sent_for_review,
+      changes_in_review_behavior,
     }) => {
       try {
         const pkg = resolvePackage(package_name, defaultPackageName);
@@ -372,7 +404,11 @@ export function registerListingTools(
             client.del(
               `${base}/listings/${encodeURIComponent(language)}/${image_type}/${encodeURIComponent(image_id)}`,
             ),
-          { validateOnly: validate_only, changesNotSentForReview: changes_not_sent_for_review },
+          {
+            validateOnly: validate_only,
+            changesNotSentForReview: changes_not_sent_for_review,
+            changesInReviewBehavior: changes_in_review_behavior,
+          },
         );
         return ok({ committed, validatedOnly: !committed, deletedImage: image_id });
       } catch (e) {
@@ -391,14 +427,25 @@ export function registerListingTools(
       ...writeShape,
     },
     destructive,
-    async ({ language, image_type, package_name, validate_only, changes_not_sent_for_review }) => {
+    async ({
+      language,
+      image_type,
+      package_name,
+      validate_only,
+      changes_not_sent_for_review,
+      changes_in_review_behavior,
+    }) => {
       try {
         const pkg = resolvePackage(package_name, defaultPackageName);
         const { committed } = await withEdit(
           client,
           pkg,
           (base) => client.del(`${base}/listings/${encodeURIComponent(language)}/${image_type}`),
-          { validateOnly: validate_only, changesNotSentForReview: changes_not_sent_for_review },
+          {
+            validateOnly: validate_only,
+            changesNotSentForReview: changes_not_sent_for_review,
+            changesInReviewBehavior: changes_in_review_behavior,
+          },
         );
         return ok({ committed, validatedOnly: !committed, deletedAllImages: image_type });
       } catch (e) {

@@ -64,6 +64,7 @@ const DESTRUCTIVE_TOOLS = [
   "deploy_recovery_action",
   "add_recovery_targeting",
   "cancel_recovery_action",
+  "update_data_safety",
 ];
 
 const UNTRUSTED_TOOLS = [
