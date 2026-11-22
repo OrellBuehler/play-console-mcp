@@ -60,10 +60,12 @@ const DESTRUCTIVE_TOOLS = [
   "delete_all_listings",
   "delete_listing_image",
   "delete_all_listing_images",
+  "upload_bundle",
   "create_recovery_action",
   "deploy_recovery_action",
   "add_recovery_targeting",
   "cancel_recovery_action",
+  "update_data_safety",
 ];
 
 const UNTRUSTED_TOOLS = [

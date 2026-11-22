@@ -209,6 +209,30 @@ describe("release tools", () => {
     );
   });
 
+  it("promote_release passes changesInReviewBehavior to the commit", async () => {
+    mockFetch
+      .mockResolvedValueOnce(resp({ id: "e6" }))
+      .mockResolvedValueOnce(
+        resp({
+          track: "beta",
+          releases: [{ name: "1", versionCodes: ["1"], status: "completed" }],
+        }),
+      )
+      .mockResolvedValueOnce(resp({}))
+      .mockResolvedValueOnce(resp({}));
+
+    await tools.get("promote_release")!({
+      from_track: "beta",
+      to_track: "production",
+      changes_in_review_behavior: "ERROR_IF_IN_REVIEW",
+    });
+
+    const commit = new URL(mockFetch.mock.calls[3][0]);
+    expect(commit.pathname).toMatch(/:commit$/);
+    expect(commit.searchParams.get("changesInReviewBehavior")).toBe("ERROR_IF_IN_REVIEW");
+    expect(commit.searchParams.has("changesNotSentForReview")).toBe(false);
+  });
+
   it("promote_release errors and deletes the edit when the source track has no active release", async () => {
     mockFetch
       .mockResolvedValueOnce(resp({ id: "e7" }))

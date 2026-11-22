@@ -234,6 +234,7 @@ export function registerReleaseTools(
       package_name,
       validate_only,
       changes_not_sent_for_review,
+      changes_in_review_behavior,
     }) => {
       try {
         const pkg = resolvePackage(package_name, defaultPackageName);
@@ -267,7 +268,11 @@ export function registerReleaseTools(
               releases: [promoted],
             });
           },
-          { validateOnly: validate_only, changesNotSentForReview: changes_not_sent_for_review },
+          {
+            validateOnly: validate_only,
+            changesNotSentForReview: changes_not_sent_for_review,
+            changesInReviewBehavior: changes_in_review_behavior,
+          },
         );
         return ok({ committed, validatedOnly: !committed, track: result });
       } catch (e) {
@@ -292,7 +297,14 @@ export function registerReleaseTools(
       ...writeShape,
     },
     destructive,
-    async ({ track, user_fraction, package_name, validate_only, changes_not_sent_for_review }) => {
+    async ({
+      track,
+      user_fraction,
+      package_name,
+      validate_only,
+      changes_not_sent_for_review,
+      changes_in_review_behavior,
+    }) => {
       try {
         const pkg = resolvePackage(package_name, defaultPackageName);
         const { result, committed } = await withEdit(
@@ -319,7 +331,11 @@ export function registerReleaseTools(
               releases: [updated],
             });
           },
-          { validateOnly: validate_only, changesNotSentForReview: changes_not_sent_for_review },
+          {
+            validateOnly: validate_only,
+            changesNotSentForReview: changes_not_sent_for_review,
+            changesInReviewBehavior: changes_in_review_behavior,
+          },
         );
         return ok({ committed, validatedOnly: !committed, track: result });
       } catch (e) {
@@ -337,7 +353,13 @@ export function registerReleaseTools(
       ...writeShape,
     },
     destructive,
-    async ({ track, package_name, validate_only, changes_not_sent_for_review }) => {
+    async ({
+      track,
+      package_name,
+      validate_only,
+      changes_not_sent_for_review,
+      changes_in_review_behavior,
+    }) => {
       try {
         const pkg = resolvePackage(package_name, defaultPackageName);
         const { result, committed } = await withEdit(
@@ -356,7 +378,11 @@ export function registerReleaseTools(
               releases: [{ ...release, status: "halted" }],
             });
           },
-          { validateOnly: validate_only, changesNotSentForReview: changes_not_sent_for_review },
+          {
+            validateOnly: validate_only,
+            changesNotSentForReview: changes_not_sent_for_review,
+            changesInReviewBehavior: changes_in_review_behavior,
+          },
         );
         return ok({ committed, validatedOnly: !committed, track: result });
       } catch (e) {
@@ -417,6 +443,7 @@ export function registerReleaseTools(
       package_name,
       validate_only,
       changes_not_sent_for_review,
+      changes_in_review_behavior,
     }) => {
       try {
         const pkg = resolvePackage(package_name, defaultPackageName);
@@ -440,7 +467,11 @@ export function registerReleaseTools(
               track,
               releases: [release],
             }),
-          { validateOnly: validate_only, changesNotSentForReview: changes_not_sent_for_review },
+          {
+            validateOnly: validate_only,
+            changesNotSentForReview: changes_not_sent_for_review,
+            changesInReviewBehavior: changes_in_review_behavior,
+          },
         );
         return ok({ committed, validatedOnly: !committed, track: result });
       } catch (e) {
@@ -464,7 +495,14 @@ export function registerReleaseTools(
       ...writeShape,
     },
     destructive,
-    async ({ track, release_notes, package_name, validate_only, changes_not_sent_for_review }) => {
+    async ({
+      track,
+      release_notes,
+      package_name,
+      validate_only,
+      changes_not_sent_for_review,
+      changes_in_review_behavior,
+    }) => {
       try {
         const pkg = resolvePackage(package_name, defaultPackageName);
         const { result, committed } = await withEdit(
@@ -483,7 +521,11 @@ export function registerReleaseTools(
               releases: [{ ...release, releaseNotes: release_notes }],
             });
           },
-          { validateOnly: validate_only, changesNotSentForReview: changes_not_sent_for_review },
+          {
+            validateOnly: validate_only,
+            changesNotSentForReview: changes_not_sent_for_review,
+            changesInReviewBehavior: changes_in_review_behavior,
+          },
         );
         return ok({ committed, validatedOnly: !committed, track: result });
       } catch (e) {
@@ -507,7 +549,14 @@ export function registerReleaseTools(
       ...writeShape,
     },
     additive,
-    async ({ track, form_factor, package_name, validate_only, changes_not_sent_for_review }) => {
+    async ({
+      track,
+      form_factor,
+      package_name,
+      validate_only,
+      changes_not_sent_for_review,
+      changes_in_review_behavior,
+    }) => {
       try {
         const pkg = resolvePackage(package_name, defaultPackageName);
         const { result, committed } = await withEdit(
@@ -519,7 +568,11 @@ export function registerReleaseTools(
               type: "CLOSED_TESTING",
               formFactor: form_factor ?? "DEFAULT",
             }),
-          { validateOnly: validate_only, changesNotSentForReview: changes_not_sent_for_review },
+          {
+            validateOnly: validate_only,
+            changesNotSentForReview: changes_not_sent_for_review,
+            changesInReviewBehavior: changes_in_review_behavior,
+          },
         );
         return ok({ committed, validatedOnly: !committed, track: result });
       } catch (e) {
@@ -542,7 +595,14 @@ export function registerReleaseTools(
       ...writeShape,
     },
     destructive,
-    async ({ track, google_groups, package_name, validate_only, changes_not_sent_for_review }) => {
+    async ({
+      track,
+      google_groups,
+      package_name,
+      validate_only,
+      changes_not_sent_for_review,
+      changes_in_review_behavior,
+    }) => {
       try {
         const pkg = resolvePackage(package_name, defaultPackageName);
         const { result, committed } = await withEdit(
@@ -552,7 +612,11 @@ export function registerReleaseTools(
             client.put(`${base}/testers/${encodeURIComponent(track)}`, {
               googleGroups: google_groups,
             }),
-          { validateOnly: validate_only, changesNotSentForReview: changes_not_sent_for_review },
+          {
+            validateOnly: validate_only,
+            changesNotSentForReview: changes_not_sent_for_review,
+            changesInReviewBehavior: changes_in_review_behavior,
+          },
         );
         return ok({ committed, validatedOnly: !committed, testers: result });
       } catch (e) {

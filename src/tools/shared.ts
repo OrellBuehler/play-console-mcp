@@ -16,6 +16,12 @@ export const writeShape = {
     .describe(
       "Commit without sending the changes for review (only for apps where changes are reviewed separately)",
     ),
+  changes_in_review_behavior: z
+    .enum(["CANCEL_IN_REVIEW_AND_SUBMIT", "ERROR_IF_IN_REVIEW"])
+    .optional()
+    .describe(
+      "What to do when the app already has changes in review: 'CANCEL_IN_REVIEW_AND_SUBMIT' (Google's default) cancels that review and submits everything together, 'ERROR_IF_IN_REVIEW' fails the commit instead so a pending review is never cancelled by accident. Check review state with list_releases.",
+    ),
 };
 
 export const releaseNotesSchema = z
