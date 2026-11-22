@@ -20,7 +20,7 @@ export function createServer(
   registerReviewTools(server, client, packageName, allowWrites);
   registerReleaseTools(server, client, packageName, allowWrites);
   registerListingTools(server, client, packageName, allowWrites, allowDestructive);
-  registerArtifactTools(server, client, packageName);
+  registerArtifactTools(server, client, packageName, allowWrites, allowDestructive);
   registerRecoveryTools(server, client, packageName, allowWrites, allowDestructive);
   registerDataSafetyTools(server, client, packageName, allowWrites, allowDestructive);
   registerVitalsTools(server, reportingClient, packageName);

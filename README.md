@@ -11,17 +11,16 @@ MCP server for the **Google Play Console** that exposes the official
 AI agents.
 
 Its focus is **managing user feedback and Android app releases** — reading and replying to Play
-Store reviews, cutting a release from an uploaded bundle, editing release notes, promoting a build
+Store reviews, uploading an app bundle and cutting a release from it, editing release notes, promoting a build
 from beta to production, steering a staged rollout, editing the store listing, rolling out an app
 recovery action, and checking crash, ANR, memory and battery vitals before and after a release.
 
-> **What it deliberately does not do:** no app bundle (AAB/APK) uploads — upload those from CI or
-> the Play Console and reference the resulting version codes here — no in-app product or
-> subscription management, no user and permission management, and no Android device management
+> **What it deliberately does not do:** no APK, deobfuscation file or internal app sharing uploads
+> (app bundles only), no in-app product or subscription management, no user and permission management, and no Android device management
 > (that is the unrelated [Android Management API](https://developers.google.com/android/management)).
 
 > **The server is read-only by default.** Write tools (review replies, release, rollout, tester and
-> listing changes) are only registered when `GOOGLE_PLAY_ALLOW_WRITES` is set. Deletes, image uploads,
+> listing changes) are only registered when `GOOGLE_PLAY_ALLOW_WRITES` is set. Deletes, bundle and image uploads,
 > app recovery writes and the Data safety update additionally need `GOOGLE_PLAY_ALLOW_DESTRUCTIVE` — see
 > [Configuration](#configuration) and [Security](#security).
 
@@ -59,7 +58,7 @@ only picked up when you choose to update.
 5. Select your app and grant at least:
    - **View app information** (required by every tool)
    - **Reply to reviews** (for `reply_to_review`)
-   - **Release to testing tracks** and/or **Production releases** (for `create_release`,
+   - **Release to testing tracks** and/or **Production releases** (for `upload_bundle`, `create_release`,
      `promote_release`, `update_rollout`, `halt_rollout`, `update_release_notes`, `create_track`,
      `update_testers`, and the app recovery tools)
    - **Edit store listing, pricing & distribution** (for `update_listing`, `update_app_details` and
@@ -76,13 +75,13 @@ Permission changes can take a few minutes to propagate. Until they do, calls fai
 
 ## Configuration
 
-| Variable                          | Required | Description                                                                                                                                                         |
-| --------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GOOGLE_SERVICE_ACCOUNT_KEY_PATH` | one of   | Path to the downloaded service account JSON key                                                                                                                     |
-| `GOOGLE_SERVICE_ACCOUNT_KEY`      | one of   | The service account JSON key inline, as a raw JSON string                                                                                                           |
-| `GOOGLE_PLAY_PACKAGE_NAME`        | no       | Default app package name, so tools can omit `package_name`                                                                                                          |
-| `GOOGLE_PLAY_ALLOW_WRITES`        | no       | Set to `1`, `true` or `yes` to register the write tools. Off by default: the server is read-only                                                                    |
-| `GOOGLE_PLAY_ALLOW_DESTRUCTIVE`   | no       | Set to `1`, `true` or `yes` to also register the delete, image upload, recovery write and Data safety tools. Has no effect unless `GOOGLE_PLAY_ALLOW_WRITES` is set |
+| Variable                          | Required | Description                                                                                                                                                                    |
+| --------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `GOOGLE_SERVICE_ACCOUNT_KEY_PATH` | one of   | Path to the downloaded service account JSON key                                                                                                                                |
+| `GOOGLE_SERVICE_ACCOUNT_KEY`      | one of   | The service account JSON key inline, as a raw JSON string                                                                                                                      |
+| `GOOGLE_PLAY_PACKAGE_NAME`        | no       | Default app package name, so tools can omit `package_name`                                                                                                                     |
+| `GOOGLE_PLAY_ALLOW_WRITES`        | no       | Set to `1`, `true` or `yes` to register the write tools. Off by default: the server is read-only                                                                               |
+| `GOOGLE_PLAY_ALLOW_DESTRUCTIVE`   | no       | Set to `1`, `true` or `yes` to also register the delete, bundle and image upload, recovery write and Data safety tools. Has no effect unless `GOOGLE_PLAY_ALLOW_WRITES` is set |
 
 ## Security
 
@@ -93,7 +92,7 @@ rollout" is a prompt injection attempt, so the server limits what such text can 
 - **Read-only by default.** Without `GOOGLE_PLAY_ALLOW_WRITES` no tool can change anything in the
   Play Console. Leave it unset for review triage and vitals analysis, and enable it only in the
   sessions where you actually release or reply.
-- **Destructive tools need both flags.** Deletes, image uploads, app recovery writes and the Data
+- **Destructive tools need both flags.** Deletes, bundle and image uploads, app recovery writes and the Data
   safety update are only registered when `GOOGLE_PLAY_ALLOW_WRITES` and `GOOGLE_PLAY_ALLOW_DESTRUCTIVE` are both set.
 - **Tool annotations.** Every tool declares `readOnlyHint`, `destructiveHint`, `idempotentHint` and
   `openWorldHint`, so MCP clients can ask for confirmation before a write.
@@ -124,7 +123,7 @@ rollout" is a prompt injection attempt, so the server limits what such text can 
 ```
 
 This is the read-only setup. To register the write tools, add `"GOOGLE_PLAY_ALLOW_WRITES": "true"`
-to `env`, and `"GOOGLE_PLAY_ALLOW_DESTRUCTIVE": "true"` on top of it for deletes, image uploads,
+to `env`, and `"GOOGLE_PLAY_ALLOW_DESTRUCTIVE": "true"` on top of it for deletes, bundle and image uploads,
 app recovery writes and the Data safety update.
 
 ## Example prompts
@@ -176,17 +175,20 @@ The **Opt-in** column of each table shows what a tool needs: `writes` means
 
 ### Artifacts
 
-| Tool                       | Description                                                                  |
-| -------------------------- | ---------------------------------------------------------------------------- |
-| `list_bundles`             | List uploaded app bundles with their version codes and hashes                |
-| `list_apks`                | List uploaded APKs with their version codes and hashes                       |
-| `list_generated_apks`      | List the APKs Play generated from a bundle, grouped by signing key           |
-| `get_expansion_file`       | Get the OBB expansion file attached to an APK version code (legacy APK-only) |
-| `list_device_tier_configs` | List the app's device tier configs (device groups, tiers, country sets)      |
-| `get_device_tier_config`   | Get one device tier config by id                                             |
+| Tool                       | Description                                                                  | Opt-in      |
+| -------------------------- | ---------------------------------------------------------------------------- | ----------- |
+| `list_bundles`             | List uploaded app bundles with their version codes and hashes                |             |
+| `list_apks`                | List uploaded APKs with their version codes and hashes                       |             |
+| `list_generated_apks`      | List the APKs Play generated from a bundle, grouped by signing key           |             |
+| `get_expansion_file`       | Get the OBB expansion file attached to an APK version code (legacy APK-only) |             |
+| `list_device_tier_configs` | List the app's device tier configs (device groups, tiers, country sets)      |             |
+| `get_device_tier_config`   | Get one device tier config by id                                             |             |
+| `upload_bundle`            | Upload a local `.aab`, optionally releasing it on a track in the same edit   | destructive |
 
-Bundles and APKs are read-only here — upload them from CI or the Play Console, then pass the
-version codes to `create_release`.
+`upload_bundle` reads the whole `.aab` into memory and sends it in one request with a 10 minute
+timeout. Without `track` it only uploads: pass the returned version code to `create_release`. With
+`track` it replaces that track's releases with a draft (or completed) release of the new bundle.
+APKs are read-only here.
 
 ### Listings
 

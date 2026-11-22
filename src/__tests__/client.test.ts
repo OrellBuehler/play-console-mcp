@@ -109,6 +109,13 @@ describe("GooglePlayClient", () => {
     expect(options.headers["Content-Type"]).toBe("image/png");
   });
 
+  it("upload reports its own timeout instead of the client default", async () => {
+    mockFetch.mockRejectedValueOnce(new DOMException("timed out", "TimeoutError"));
+    await expect(
+      client.upload("/x", new Uint8Array([1]), "application/octet-stream", undefined, 600000),
+    ).rejects.toThrow("Google Play request timed out after 600000ms");
+  });
+
   it("tolerates an empty response body", async () => {
     mockFetch.mockResolvedValueOnce(resp(""));
     expect(await client.post("/edits/1:validate")).toEqual({});

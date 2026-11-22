@@ -1,10 +1,13 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { GooglePlayClient } from "../play/client.js";
+import { readFile } from "node:fs/promises";
+import { GooglePlayClient, PUBLISHER_UPLOAD_BASE_URL } from "../play/client.js";
 import { registerArtifactTools } from "../tools/artifacts.js";
+
+vi.mock("node:fs/promises", () => ({ readFile: vi.fn() }));
 
 type Handler = (args: any) => Promise<{ content: { text?: string }[]; isError?: boolean }>;
 
-function collect(defaultPackage?: string) {
+function collect(defaultPackage?: string, allowWrites = true, allowDestructive = true) {
   const tools = new Map<string, Handler>();
   registerArtifactTools(
     {
@@ -12,6 +15,8 @@ function collect(defaultPackage?: string) {
     } as any,
     new GooglePlayClient(async () => "tok"),
     defaultPackage,
+    allowWrites,
+    allowDestructive,
   );
   return tools;
 }
@@ -38,6 +43,7 @@ describe("artifact tools", () => {
   beforeEach(() => {
     mockFetch = vi.fn();
     vi.stubGlobal("fetch", mockFetch);
+    vi.mocked(readFile).mockReset();
   });
   afterEach(() => vi.restoreAllMocks());
 
@@ -110,6 +116,156 @@ describe("artifact tools", () => {
     expect(calls(mockFetch)).toEqual([
       "GET /androidpublisher/v3/applications/com.acme.app/deviceTierConfigs/7",
     ]);
+  });
+
+  it("upload_bundle posts the bytes to the upload host and commits", async () => {
+    const bytes = Buffer.from([1, 2, 3]);
+    vi.mocked(readFile).mockResolvedValueOnce(bytes as never);
+    mockFetch
+      .mockResolvedValueOnce(resp({ id: "b1" }))
+      .mockResolvedValueOnce(resp({ versionCode: 416, sha256: "def" }))
+      .mockResolvedValueOnce(resp({}));
+
+    const res = await tools.get("upload_bundle")!({
+      file_path: "/tmp/app-release.aab",
+      ack_bundle_installation_warning: true,
+      device_tier_config_id: "LATEST",
+      changes_in_review_behavior: "ERROR_IF_IN_REVIEW",
+    });
+
+    expect(readFile).toHaveBeenCalledWith("/tmp/app-release.aab");
+    const [url, options] = mockFetch.mock.calls[1];
+    expect(new URL(url).origin + new URL(url).pathname).toBe(
+      `${PUBLISHER_UPLOAD_BASE_URL}/applications/com.acme.app/edits/b1/bundles`,
+    );
+    expect(new URL(url).searchParams.get("uploadType")).toBe("media");
+    expect(new URL(url).searchParams.get("ackBundleInstallationWarning")).toBe("true");
+    expect(new URL(url).searchParams.get("deviceTierConfigId")).toBe("LATEST");
+    expect(options.method).toBe("POST");
+    expect(options.body).toBe(bytes);
+    expect(options.headers["Content-Type"]).toBe("application/octet-stream");
+    expect(calls(mockFetch)).toEqual([
+      "POST /androidpublisher/v3/applications/com.acme.app/edits",
+      "POST /upload/androidpublisher/v3/applications/com.acme.app/edits/b1/bundles",
+      "POST /androidpublisher/v3/applications/com.acme.app/edits/b1:commit",
+    ]);
+    expect(new URL(mockFetch.mock.calls[2][0]).searchParams.get("changesInReviewBehavior")).toBe(
+      "ERROR_IF_IN_REVIEW",
+    );
+    expect(JSON.parse(res.content[0].text!)).toEqual({
+      committed: true,
+      validatedOnly: false,
+      bundle: { versionCode: 416, sha256: "def" },
+    });
+  });
+
+  it("upload_bundle with a track releases the new version code in the same edit", async () => {
+    vi.mocked(readFile).mockResolvedValueOnce(Buffer.from([1]) as never);
+    mockFetch
+      .mockResolvedValueOnce(resp({ id: "b2" }))
+      .mockResolvedValueOnce(resp({ versionCode: 416 }))
+      .mockResolvedValueOnce(resp({ track: "internal" }))
+      .mockResolvedValueOnce(resp({}));
+
+    const res = await tools.get("upload_bundle")!({
+      file_path: "/tmp/app-release.AAB",
+      track: "internal",
+      release_name: "1.4.0 (416)",
+      release_notes: [{ language: "en-US", text: "Bug fixes" }],
+    });
+
+    expect(calls(mockFetch)).toEqual([
+      "POST /androidpublisher/v3/applications/com.acme.app/edits",
+      "POST /upload/androidpublisher/v3/applications/com.acme.app/edits/b2/bundles",
+      "PUT /androidpublisher/v3/applications/com.acme.app/edits/b2/tracks/internal",
+      "POST /androidpublisher/v3/applications/com.acme.app/edits/b2:commit",
+    ]);
+    expect(JSON.parse(mockFetch.mock.calls[2][1].body)).toEqual({
+      track: "internal",
+      releases: [
+        {
+          versionCodes: ["416"],
+          status: "draft",
+          name: "1.4.0 (416)",
+          releaseNotes: [{ language: "en-US", text: "Bug fixes" }],
+        },
+      ],
+    });
+    expect(JSON.parse(res.content[0].text!).track).toEqual({ track: "internal" });
+  });
+
+  it("upload_bundle validates and discards the edit on a dry run", async () => {
+    vi.mocked(readFile).mockResolvedValueOnce(Buffer.from([1]) as never);
+    mockFetch
+      .mockResolvedValueOnce(resp({ id: "b3" }))
+      .mockResolvedValueOnce(resp({ versionCode: 416 }))
+      .mockResolvedValueOnce(resp({}))
+      .mockResolvedValueOnce(resp(""));
+
+    const res = await tools.get("upload_bundle")!({
+      file_path: "/tmp/app-release.aab",
+      validate_only: true,
+    });
+    expect(calls(mockFetch)).toEqual([
+      "POST /androidpublisher/v3/applications/com.acme.app/edits",
+      "POST /upload/androidpublisher/v3/applications/com.acme.app/edits/b3/bundles",
+      "POST /androidpublisher/v3/applications/com.acme.app/edits/b3:validate",
+      "DELETE /androidpublisher/v3/applications/com.acme.app/edits/b3",
+    ]);
+    expect(JSON.parse(res.content[0].text!).committed).toBe(false);
+  });
+
+  it("upload_bundle deletes the edit when the upload fails", async () => {
+    vi.mocked(readFile).mockResolvedValueOnce(Buffer.from([1]) as never);
+    mockFetch
+      .mockResolvedValueOnce(resp({ id: "b4" }))
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 403,
+        statusText: "Forbidden",
+        text: () => Promise.resolve("Version code 416 has already been used."),
+      })
+      .mockResolvedValueOnce(resp(""));
+
+    const res = await tools.get("upload_bundle")!({ file_path: "/tmp/app-release.aab" });
+    expect(res.isError).toBe(true);
+    expect(res.content[0].text).toContain("Version code 416 has already been used.");
+    expect(calls(mockFetch)[2]).toBe(
+      "DELETE /androidpublisher/v3/applications/com.acme.app/edits/b4",
+    );
+  });
+
+  it("upload_bundle rejects anything but an .aab without opening an edit", async () => {
+    const res = await tools.get("upload_bundle")!({ file_path: "/tmp/app-release.apk" });
+    expect(res.isError).toBe(true);
+    expect(res.content[0].text).toContain("Unsupported file type '.apk'");
+    expect(readFile).not.toHaveBeenCalled();
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  it("upload_bundle rejects release options without a track", async () => {
+    const res = await tools.get("upload_bundle")!({
+      file_path: "/tmp/app-release.aab",
+      status: "completed",
+    });
+    expect(res.isError).toBe(true);
+    expect(res.content[0].text).toContain("need track to be set");
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  it("registers upload_bundle only when writes and destructive tools are both allowed", () => {
+    const read = [
+      "list_bundles",
+      "list_apks",
+      "list_generated_apks",
+      "get_expansion_file",
+      "list_device_tier_configs",
+      "get_device_tier_config",
+    ];
+    expect([...collect("com.acme.app", false, false).keys()]).toEqual(read);
+    expect([...collect("com.acme.app", true, false).keys()]).toEqual(read);
+    expect([...collect("com.acme.app", false, true).keys()]).toEqual(read);
+    expect([...collect("com.acme.app", true, true).keys()]).toEqual([...read, "upload_bundle"]);
   });
 
   it("errors when no package name is available", async () => {

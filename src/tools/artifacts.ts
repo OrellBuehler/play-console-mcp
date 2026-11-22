@@ -1,18 +1,24 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import { readFile } from "node:fs/promises";
+import { extname } from "node:path";
 import type { GooglePlayClient } from "../play/client.js";
 import { ok, err, resolvePackage } from "../play/format.js";
-import { readWithEdit } from "../play/edits.js";
-import { packageArg, readOnly } from "./shared.js";
+import { readWithEdit, withEdit } from "../play/edits.js";
+import { packageArg, writeShape, releaseNotesSchema, readOnly, destructive } from "./shared.js";
+
+const BUNDLE_UPLOAD_TIMEOUT_MS = 10 * 60 * 1000;
 
 export function registerArtifactTools(
   server: McpServer,
   client: GooglePlayClient,
   defaultPackageName?: string,
+  allowWrites = false,
+  allowDestructive = false,
 ) {
   server.tool(
     "list_bundles",
-    "List the app bundles (AABs) uploaded for an app, each with versionCode, sha1 and sha256. Use the versionCode values with create_release to ship a bundle to a track. This server does not upload bundles — upload them from CI or the Play Console first.",
+    "List the app bundles (AABs) uploaded for an app, each with versionCode, sha1 and sha256. Use the versionCode values with create_release to ship a bundle to a track. Upload a new bundle with upload_bundle (needs the write and destructive opt-ins), from CI or in the Play Console.",
     {
       package_name: packageArg,
     },
@@ -141,6 +147,115 @@ export function registerArtifactTools(
           `/applications/${encodeURIComponent(pkg)}/deviceTierConfigs/${encodeURIComponent(device_tier_config_id)}`,
         );
         return ok(res);
+      } catch (e) {
+        return err(e);
+      }
+    },
+  );
+
+  if (!allowWrites || !allowDestructive) return;
+
+  server.tool(
+    "upload_bundle",
+    "Upload an Android App Bundle (.aab) from a local file and return its versionCode, sha1 and sha256. Without track the bundle is only added to the app's artifacts: pass the returned versionCode to create_release to ship it. With track the same edit also creates a release of the new bundle on that track, replacing whatever releases that track currently has — as a 'draft' unless status says otherwise; use create_release instead for staged rollouts or country targeting. The versionCode must be higher than every bundle already uploaded, and the bundle must be signed with the app's upload key. Large bundles take minutes: the upload times out after 10 minutes. validate_only still uploads the whole file, then validates and discards the edit, so the bundle is not kept.",
+    {
+      file_path: z.string().describe("Absolute path to a local .aab file to upload"),
+      track: z
+        .string()
+        .optional()
+        .describe(
+          "Also release the uploaded bundle on this track: 'internal', 'alpha', 'beta', 'production' or a custom track. Omit to upload without releasing.",
+        ),
+      status: z
+        .enum(["draft", "completed"])
+        .optional()
+        .describe(
+          "Status of the release created on track: 'draft' (default) stages it without publishing, 'completed' releases it to all users of the track. Only with track.",
+        ),
+      release_name: z
+        .string()
+        .optional()
+        .describe("Release name shown in the Play Console, e.g. '1.4.0 (415)'. Only with track."),
+      release_notes: releaseNotesSchema.describe(
+        "Release notes per locale, e.g. [{language:'en-US',text:'Bug fixes'}]. Only with track.",
+      ),
+      ack_bundle_installation_warning: z
+        .boolean()
+        .optional()
+        .describe(
+          "Acknowledge the warning that the bundle's install size may be too large for some devices; Google rejects such a bundle unless this is true",
+        ),
+      device_tier_config_id: z
+        .string()
+        .optional()
+        .describe(
+          "Device tier config to generate deliverables with: an id from list_device_tier_configs, or 'LATEST' for the newest one. Omit for bundles without device tier targeting.",
+        ),
+      package_name: packageArg,
+      ...writeShape,
+    },
+    destructive,
+    async ({
+      file_path,
+      track,
+      status,
+      release_name,
+      release_notes,
+      ack_bundle_installation_warning,
+      device_tier_config_id,
+      package_name,
+      validate_only,
+      changes_not_sent_for_review,
+      changes_in_review_behavior,
+    }) => {
+      try {
+        const pkg = resolvePackage(package_name, defaultPackageName);
+        const ext = extname(file_path).toLowerCase();
+        if (ext !== ".aab") {
+          throw new Error(`Unsupported file type '${ext}'. Only .aab app bundles can be uploaded.`);
+        }
+        if (
+          track === undefined &&
+          (status !== undefined || release_name !== undefined || release_notes !== undefined)
+        ) {
+          throw new Error("status, release_name and release_notes need track to be set.");
+        }
+        const bytes = await readFile(file_path);
+        const { result, committed } = await withEdit(
+          client,
+          pkg,
+          async (base) => {
+            const bundle = await client.upload<{ versionCode?: number }>(
+              `${base}/bundles`,
+              bytes,
+              "application/octet-stream",
+              {
+                ackBundleInstallationWarning: ack_bundle_installation_warning,
+                deviceTierConfigId: device_tier_config_id,
+              },
+              BUNDLE_UPLOAD_TIMEOUT_MS,
+            );
+            if (track === undefined) return { bundle };
+            const updated = await client.put(`${base}/tracks/${encodeURIComponent(track)}`, {
+              track,
+              releases: [
+                {
+                  versionCodes: [String(bundle.versionCode)],
+                  status: status ?? "draft",
+                  ...(release_name === undefined ? {} : { name: release_name }),
+                  ...(release_notes === undefined ? {} : { releaseNotes: release_notes }),
+                },
+              ],
+            });
+            return { bundle, track: updated };
+          },
+          {
+            validateOnly: validate_only,
+            changesNotSentForReview: changes_not_sent_for_review,
+            changesInReviewBehavior: changes_in_review_behavior,
+          },
+        );
+        return ok({ committed, validatedOnly: !committed, ...result });
       } catch (e) {
         return err(e);
       }

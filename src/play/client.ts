@@ -39,7 +39,11 @@ export class GooglePlayClient {
     return url.toString();
   }
 
-  private async request(url: string, options: RequestInit = {}): Promise<Response> {
+  private async request(
+    url: string,
+    options: RequestInit = {},
+    timeoutMs = this.timeoutMs,
+  ): Promise<Response> {
     const token = await this.tokenProvider();
     let res: Response;
     try {
@@ -51,11 +55,11 @@ export class GooglePlayClient {
           ...(typeof options.body === "string" ? { "Content-Type": "application/json" } : {}),
           ...((options.headers as Record<string, string>) ?? {}),
         },
-        signal: options.signal ?? AbortSignal.timeout(this.timeoutMs),
+        signal: options.signal ?? AbortSignal.timeout(timeoutMs),
       });
     } catch (e) {
       if (e instanceof DOMException && e.name === "TimeoutError") {
-        throw new Error(`Google Play request timed out after ${this.timeoutMs}ms`, { cause: e });
+        throw new Error(`Google Play request timed out after ${timeoutMs}ms`, { cause: e });
       }
       throw e;
     }
@@ -104,13 +108,18 @@ export class GooglePlayClient {
     bytes: Uint8Array,
     contentType: string,
     params?: QueryParams,
+    timeoutMs?: number,
   ): Promise<T> {
     const url = this.buildUrl(`${this.uploadBaseUrl}${path}`, { ...params, uploadType: "media" });
-    const res = await this.request(url, {
-      method: "POST",
-      body: bytes as unknown as BodyInit,
-      headers: { "Content-Type": contentType },
-    });
+    const res = await this.request(
+      url,
+      {
+        method: "POST",
+        body: bytes as unknown as BodyInit,
+        headers: { "Content-Type": contentType },
+      },
+      timeoutMs,
+    );
     return this.parseMaybeEmpty<T>(res);
   }
 
