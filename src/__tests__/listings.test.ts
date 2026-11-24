@@ -231,6 +231,158 @@ describe("listing tools", () => {
     );
   });
 
+  it("upload_listing_image uploads several files in order with one commit", async () => {
+    vi.mocked(readFile)
+      .mockResolvedValueOnce(Buffer.from([1]) as never)
+      .mockResolvedValueOnce(Buffer.from([2]) as never);
+    mockFetch
+      .mockResolvedValueOnce(resp({ id: "m1" }))
+      .mockResolvedValueOnce(resp({ image: { id: "a" } }))
+      .mockResolvedValueOnce(resp({ image: { id: "b" } }))
+      .mockResolvedValueOnce(resp({}));
+
+    const res = await tools.get("upload_listing_image")!({
+      language: "en-US",
+      image_type: "phoneScreenshots",
+      file_paths: ["/tmp/1.png", "/tmp/2.jpg"],
+    });
+
+    expect(calls(mockFetch)).toEqual([
+      "POST /androidpublisher/v3/applications/com.acme.app/edits",
+      "POST /upload/androidpublisher/v3/applications/com.acme.app/edits/m1/listings/en-US/phoneScreenshots",
+      "POST /upload/androidpublisher/v3/applications/com.acme.app/edits/m1/listings/en-US/phoneScreenshots",
+      "POST /androidpublisher/v3/applications/com.acme.app/edits/m1:commit",
+    ]);
+    expect(mockFetch.mock.calls[1][1].headers["Content-Type"]).toBe("image/png");
+    expect(mockFetch.mock.calls[2][1].headers["Content-Type"]).toBe("image/jpeg");
+    const out = JSON.parse(res.content[0].text!);
+    expect(out.committed).toBe(true);
+    expect(out.images).toEqual([{ image: { id: "a" } }, { image: { id: "b" } }]);
+  });
+
+  it("upload_listing_image replace_existing deletes all images first in the same edit", async () => {
+    vi.mocked(readFile)
+      .mockResolvedValueOnce(Buffer.from([1]) as never)
+      .mockResolvedValueOnce(Buffer.from([2]) as never);
+    mockFetch
+      .mockResolvedValueOnce(resp({ id: "m2" }))
+      .mockResolvedValueOnce(resp(""))
+      .mockResolvedValueOnce(resp({ image: { id: "a" } }))
+      .mockResolvedValueOnce(resp({ image: { id: "b" } }))
+      .mockResolvedValueOnce(resp({}));
+
+    await tools.get("upload_listing_image")!({
+      language: "en-US",
+      image_type: "phoneScreenshots",
+      file_paths: ["/tmp/1.png", "/tmp/2.png"],
+      replace_existing: true,
+    });
+
+    expect(
+      calls(mockFetch).map((c) => c.replace("/androidpublisher/v3/applications/com.acme.app", "")),
+    ).toEqual([
+      "POST /edits",
+      "DELETE /edits/m2/listings/en-US/phoneScreenshots",
+      "POST /upload/edits/m2/listings/en-US/phoneScreenshots",
+      "POST /upload/edits/m2/listings/en-US/phoneScreenshots",
+      "POST /edits/m2:commit",
+    ]);
+  });
+
+  it("upload_listing_image deletes the edit and names the file when an upload fails", async () => {
+    vi.mocked(readFile)
+      .mockResolvedValueOnce(Buffer.from([1]) as never)
+      .mockResolvedValueOnce(Buffer.from([2]) as never)
+      .mockResolvedValueOnce(Buffer.from([3]) as never);
+    mockFetch
+      .mockResolvedValueOnce(resp({ id: "m3" }))
+      .mockResolvedValueOnce(resp({ image: { id: "a" } }))
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 400,
+        statusText: "Bad Request",
+        text: () => Promise.resolve("bad image"),
+        json: () => Promise.resolve({}),
+      })
+      .mockResolvedValueOnce(resp(""));
+
+    const res = await tools.get("upload_listing_image")!({
+      language: "en-US",
+      image_type: "phoneScreenshots",
+      file_paths: ["/tmp/1.png", "/tmp/2.png", "/tmp/3.png"],
+    });
+
+    expect(res.isError).toBe(true);
+    expect(res.content[0].text).toContain("/tmp/2.png");
+    const c = calls(mockFetch);
+    expect(c).toHaveLength(4);
+    expect(c[3]).toBe("DELETE /androidpublisher/v3/applications/com.acme.app/edits/m3");
+    expect(c.some((x) => x.includes(":commit"))).toBe(false);
+  });
+
+  it("upload_listing_image requires exactly one of file_path and file_paths", async () => {
+    const both = await tools.get("upload_listing_image")!({
+      language: "en-US",
+      image_type: "phoneScreenshots",
+      file_path: "/tmp/1.png",
+      file_paths: ["/tmp/2.png"],
+    });
+    const neither = await tools.get("upload_listing_image")!({
+      language: "en-US",
+      image_type: "phoneScreenshots",
+    });
+    for (const res of [both, neither]) {
+      expect(res.isError).toBe(true);
+      expect(res.content[0].text).toContain("exactly one of file_path or file_paths");
+    }
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  it("upload_listing_image rejects too many files and several files for a singular type", async () => {
+    const many = await tools.get("upload_listing_image")!({
+      language: "en-US",
+      image_type: "phoneScreenshots",
+      file_paths: Array.from({ length: 9 }, (_, i) => `/tmp/${i}.png`),
+    });
+    const singular = await tools.get("upload_listing_image")!({
+      language: "en-US",
+      image_type: "icon",
+      file_paths: ["/tmp/1.png", "/tmp/2.png"],
+    });
+    expect(many.isError).toBe(true);
+    expect(singular.isError).toBe(true);
+    expect(singular.content[0].text).toContain("exactly one image");
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  it("upload_listing_image with file_paths and validate_only validates and discards the edit", async () => {
+    vi.mocked(readFile)
+      .mockResolvedValueOnce(Buffer.from([1]) as never)
+      .mockResolvedValueOnce(Buffer.from([2]) as never);
+    mockFetch
+      .mockResolvedValueOnce(resp({ id: "m4" }))
+      .mockResolvedValueOnce(resp({ image: { id: "a" } }))
+      .mockResolvedValueOnce(resp({ image: { id: "b" } }))
+      .mockResolvedValueOnce(resp({}))
+      .mockResolvedValueOnce(resp(""));
+
+    const res = await tools.get("upload_listing_image")!({
+      language: "en-US",
+      image_type: "phoneScreenshots",
+      file_paths: ["/tmp/1.png", "/tmp/2.png"],
+      validate_only: true,
+    });
+
+    const c = calls(mockFetch);
+    expect(c[3]).toBe("POST /androidpublisher/v3/applications/com.acme.app/edits/m4:validate");
+    expect(c[4]).toBe("DELETE /androidpublisher/v3/applications/com.acme.app/edits/m4");
+    expect(c.some((x) => x.includes(":commit"))).toBe(false);
+    expect(JSON.parse(res.content[0].text!)).toMatchObject({
+      committed: false,
+      validatedOnly: true,
+    });
+  });
+
   it("upload_listing_image rejects unsupported file extensions without opening an edit", async () => {
     const res = await tools.get("upload_listing_image")!({
       language: "en-US",
