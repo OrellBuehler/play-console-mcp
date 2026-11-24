@@ -183,7 +183,15 @@ export function registerListingTools(
         const { result, committed } = await withEdit(
           client,
           pkg,
-          (base) => client.patch(`${base}/listings/${encodeURIComponent(language)}`, body),
+          async (base) => {
+            const path = `${base}/listings/${encodeURIComponent(language)}`;
+            try {
+              return await client.patch(path, body);
+            } catch (e) {
+              if (!(e instanceof Error) || !e.message.startsWith("404 ")) throw e;
+              return client.put(path, body);
+            }
+          },
           {
             validateOnly: validate_only,
             changesNotSentForReview: changes_not_sent_for_review,

@@ -93,6 +93,28 @@ describe("listing tools", () => {
     expect(JSON.parse(res.content[0].text!).committed).toBe(true);
   });
 
+  it("update_listing creates the listing when the locale does not exist yet", async () => {
+    mockFetch
+      .mockResolvedValueOnce(resp({ id: "l9" }))
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 404,
+        statusText: "Not Found",
+        text: () => Promise.resolve("Listing for language 'de-DE' not found."),
+      })
+      .mockResolvedValueOnce(resp({ language: "de-DE", title: "Acme" }))
+      .mockResolvedValueOnce(resp({}));
+
+    const res = await tools.get("update_listing")!({ language: "de-DE", title: "Acme" });
+    expect(calls(mockFetch)).toEqual([
+      "POST /androidpublisher/v3/applications/com.acme.app/edits",
+      "PATCH /androidpublisher/v3/applications/com.acme.app/edits/l9/listings/de-DE",
+      "PUT /androidpublisher/v3/applications/com.acme.app/edits/l9/listings/de-DE",
+      "POST /androidpublisher/v3/applications/com.acme.app/edits/l9:commit",
+    ]);
+    expect(JSON.parse(res.content[0].text!).listing.language).toBe("de-DE");
+  });
+
   it("update_listing validate_only validates and discards instead of committing", async () => {
     mockFetch
       .mockResolvedValueOnce(resp({ id: "l4" }))
