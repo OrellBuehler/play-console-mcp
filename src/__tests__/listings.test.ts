@@ -93,6 +93,57 @@ describe("listing tools", () => {
     expect(JSON.parse(res.content[0].text!).committed).toBe(true);
   });
 
+  const notFound = {
+    ok: false,
+    status: 404,
+    statusText: "Not Found",
+    text: () => Promise.resolve("Listing for language 'en-US' not found."),
+  };
+
+  it("update_listing creates a missing locale when title and both descriptions are passed", async () => {
+    mockFetch
+      .mockResolvedValueOnce(resp({ id: "l9" }))
+      .mockResolvedValueOnce(notFound)
+      .mockResolvedValueOnce(resp({ language: "en-US", title: "Acme" }))
+      .mockResolvedValueOnce(resp({}));
+
+    const res = await tools.get("update_listing")!({
+      language: "en-US",
+      title: "Acme",
+      short_description: "Short",
+      full_description: "Long",
+    });
+    expect(calls(mockFetch)).toEqual([
+      "POST /androidpublisher/v3/applications/com.acme.app/edits",
+      "PATCH /androidpublisher/v3/applications/com.acme.app/edits/l9/listings/en-US",
+      "PUT /androidpublisher/v3/applications/com.acme.app/edits/l9/listings/en-US",
+      "POST /androidpublisher/v3/applications/com.acme.app/edits/l9:commit",
+    ]);
+    expect(JSON.parse(mockFetch.mock.calls[2][1].body)).toEqual({
+      language: "en-US",
+      title: "Acme",
+      shortDescription: "Short",
+      fullDescription: "Long",
+    });
+    expect(JSON.parse(res.content[0].text!).listing.language).toBe("en-US");
+  });
+
+  it("update_listing names the missing fields when a partial update targets a missing locale", async () => {
+    mockFetch
+      .mockResolvedValueOnce(resp({ id: "l10" }))
+      .mockResolvedValueOnce(notFound)
+      .mockResolvedValueOnce(resp(""));
+
+    const res = await tools.get("update_listing")!({ language: "en-US", title: "Acme" });
+    expect(res.isError).toBe(true);
+    expect(res.content[0].text).toContain("short_description, full_description");
+    expect(calls(mockFetch)).toEqual([
+      "POST /androidpublisher/v3/applications/com.acme.app/edits",
+      "PATCH /androidpublisher/v3/applications/com.acme.app/edits/l10/listings/en-US",
+      "DELETE /androidpublisher/v3/applications/com.acme.app/edits/l10",
+    ]);
+  });
+
   it("update_listing validate_only validates and discards instead of committing", async () => {
     mockFetch
       .mockResolvedValueOnce(resp({ id: "l4" }))
