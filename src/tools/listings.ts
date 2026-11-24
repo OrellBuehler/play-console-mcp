@@ -110,7 +110,7 @@ export function registerListingTools(
 
   server.tool(
     "list_listing_images",
-    "List the store images of one type for one locale, each with id, url, sha1 and sha256. Use the returned ids with delete_listing_image.",
+    "List the store images of one type for one locale, each with id, url, sha1 and sha256. Use the returned ids with delete_listing_image, which (like upload_listing_image) is only available when GOOGLE_PLAY_ALLOW_DESTRUCTIVE is set.",
     {
       language: languageArg,
       image_type: imageTypeArg,
@@ -134,7 +134,7 @@ export function registerListingTools(
 
   server.tool(
     "update_listing",
-    "Update the store listing text for one locale. Only the fields you pass are changed, so you can edit just the title without touching the description. Creates the listing if that locale does not exist yet. Google's limits: title 30 characters, short description 80, full description 4000. Use validate_only first to check the change without committing.",
+    "Update the store listing text for one locale. Only the fields you pass are changed, so you can edit just the title without touching the description. Creates the listing if that locale does not exist yet, which requires title, short_description and full_description together. Google's limits: title 30 characters, short description 80, full description 4000. Use validate_only first to check the change without committing.",
     {
       language: languageArg,
       title: z
@@ -189,6 +189,17 @@ export function registerListingTools(
               return await client.patch(path, body);
             } catch (e) {
               if (!(e instanceof Error) || !e.message.startsWith("404 ")) throw e;
+              const missing = [
+                title === undefined ? "title" : null,
+                short_description === undefined ? "short_description" : null,
+                full_description === undefined ? "full_description" : null,
+              ].filter((f) => f !== null);
+              if (missing.length > 0) {
+                throw new Error(
+                  `No listing exists for '${language}' yet. Creating one needs title, short_description and full_description; missing: ${missing.join(", ")}.`,
+                  { cause: e },
+                );
+              }
               return client.put(path, body);
             }
           },

@@ -270,6 +270,7 @@ no dry run, which is why their writes need `GOOGLE_PLAY_ALLOW_DESTRUCTIVE` as we
 - **Listing updates are partial, deletes are not.** `update_listing` and `update_app_details` only
   change the fields you pass, but `update_release_notes` and `update_testers` replace the whole set —
   read the current value first and include everything you want to keep.
+- **Image uploads are destructive on purpose.** `upload_listing_image` sits behind `GOOGLE_PLAY_ALLOW_DESTRUCTIVE`: it is a binary upload, and Google's docs do not say whether a singular type (icon, feature graphic) is added or replaces the existing one, so it cannot be promised to only add.
 - **Store listing limits are Google's:** title 30 characters, short description 80, full description
   4000, release notes 500 per locale, listing images 15 MB and PNG or JPEG only.
 - **Committing cancels a running review by default.** Any committed edit — even a listing typo fix —
