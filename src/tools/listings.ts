@@ -17,6 +17,10 @@ const IMAGE_TYPES = [
   "tvBanner",
 ] as const;
 
+const MAX_SCREENSHOTS = 8;
+
+const SINGULAR_TYPES = new Set<string>(["icon", "featureGraphic", "tvBanner"]);
+
 const MAX_IMAGE_BYTES = 15 * 1024 * 1024;
 
 const CONTENT_TYPES: Record<string, string> = {
@@ -275,13 +279,31 @@ export function registerListingTools(
 
   server.tool(
     "upload_listing_image",
-    "Upload a store image (screenshot, icon, feature graphic or TV banner) from a local file for one locale. Adds to the existing images of that type rather than replacing them — use delete_all_listing_images first to replace a full screenshot set. PNG and JPEG only, max 15 MB. Use validate_only first to check the change without committing.",
+    "Upload store images (screenshots, icon, feature graphic or TV banner) from local files for one locale. Pass file_path for one image or file_paths for several (1 to 8, uploaded in the given order) — exactly one of the two. All files go into a single edit with one commit, which is required for a locale with no phone screenshots yet because Google Play rejects a commit with fewer than two. By default adds to the existing images of that type; set replace_existing to delete all existing images of that type for the locale in the same edit first, so a full set is swapped atomically. Singular types (icon, featureGraphic, tvBanner) take one file; screenshot types take up to 8. If any upload fails nothing is committed and the error names the file. PNG and JPEG only, max 15 MB each. Returns image (file_path) or images (file_paths, in order). Use validate_only first to check the change without committing.",
     {
       language: languageArg,
       image_type: imageTypeArg,
       file_path: z
         .string()
-        .describe("Absolute path to a local .png or .jpg file to upload, max 15 MB"),
+        .optional()
+        .describe(
+          "Absolute path to one local .png or .jpg file, max 15 MB. Use this or file_paths, not both",
+        ),
+      file_paths: z
+        .array(z.string())
+        .min(1)
+        .max(MAX_SCREENSHOTS)
+        .optional()
+        .describe(
+          "Ordered absolute paths to 1-8 local .png or .jpg files (max 8 per type per locale, 1 for icon, featureGraphic and tvBanner), uploaded in this order in one edit with one commit. Use this or file_path, not both",
+        ),
+      replace_existing: z
+        .boolean()
+        .optional()
+        .default(false)
+        .describe(
+          "Delete all existing images of this type for this locale in the same edit before uploading, so the set is replaced atomically. Default false (add to existing)",
+        ),
       package_name: packageArg,
       ...writeShape,
     },
@@ -290,6 +312,8 @@ export function registerListingTools(
       language,
       image_type,
       file_path,
+      file_paths,
+      replace_existing,
       package_name,
       validate_only,
       changes_not_sent_for_review,
@@ -297,29 +321,59 @@ export function registerListingTools(
     }) => {
       try {
         const pkg = resolvePackage(package_name, defaultPackageName);
-        const contentType = contentTypeFor(file_path);
-        const bytes = await readFile(file_path);
-        if (bytes.byteLength > MAX_IMAGE_BYTES) {
+        if ((file_path === undefined) === (file_paths === undefined)) {
+          throw new Error("Provide exactly one of file_path or file_paths.");
+        }
+        const paths = file_paths ?? [file_path as string];
+        if (paths.length === 0 || paths.length > MAX_SCREENSHOTS) {
+          throw new Error(`file_paths must contain 1 to ${MAX_SCREENSHOTS} files.`);
+        }
+        if (SINGULAR_TYPES.has(image_type) && paths.length > 1) {
           throw new Error(
-            `Image is ${bytes.byteLength} bytes, over the 15 MB limit Google Play accepts.`,
+            `${image_type} takes exactly one image per locale, got ${paths.length} files.`,
           );
+        }
+        const files: { path: string; contentType: string; bytes: Buffer }[] = [];
+        for (const path of paths) {
+          const contentType = contentTypeFor(path);
+          const bytes = await readFile(path);
+          if (bytes.byteLength > MAX_IMAGE_BYTES) {
+            throw new Error(
+              `Image ${path} is ${bytes.byteLength} bytes, over the 15 MB limit Google Play accepts.`,
+            );
+          }
+          files.push({ path, contentType, bytes });
         }
         const { result, committed } = await withEdit(
           client,
           pkg,
-          (base) =>
-            client.upload(
-              `${base}/listings/${encodeURIComponent(language)}/${image_type}`,
-              bytes,
-              contentType,
-            ),
+          async (base) => {
+            const imagesPath = `${base}/listings/${encodeURIComponent(language)}/${image_type}`;
+            if (replace_existing) await client.del(imagesPath);
+            const uploaded: unknown[] = [];
+            for (const file of files) {
+              try {
+                uploaded.push(await client.upload(imagesPath, file.bytes, file.contentType));
+              } catch (e) {
+                throw new Error(
+                  `Upload of ${file.path} failed, nothing was committed: ${e instanceof Error ? e.message : String(e)}`,
+                  { cause: e },
+                );
+              }
+            }
+            return uploaded;
+          },
           {
             validateOnly: validate_only,
             changesNotSentForReview: changes_not_sent_for_review,
             changesInReviewBehavior: changes_in_review_behavior,
           },
         );
-        return ok({ committed, validatedOnly: !committed, image: result });
+        return ok({
+          committed,
+          validatedOnly: !committed,
+          ...(file_paths === undefined ? { image: result[0] } : { images: result }),
+        });
       } catch (e) {
         return err(e);
       }

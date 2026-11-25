@@ -34,7 +34,7 @@ recovery action, and checking crash, ANR, memory and battery vitals before and a
 claude mcp add play-console \
   -e GOOGLE_SERVICE_ACCOUNT_KEY_PATH=/path/to/service-account.json \
   -e GOOGLE_PLAY_PACKAGE_NAME=com.example.app \
-  -- npx -y @orellbuehler/play-console-mcp@0.5.1
+  -- npx -y @orellbuehler/play-console-mcp@0.5.2
 ```
 
 The `-e` flags must come **before** the `--` separator; anything after `--` is passed to the server
@@ -102,7 +102,7 @@ rollout" is a prompt injection attempt, so the server limits what such text can 
   for write tools.
 - **Scope the service account.** Grant it only the Play Console permissions for the tools you use;
   a key with **View app information** only cannot write whatever the flags say.
-- **Pin the version** in your MCP config (`@orellbuehler/play-console-mcp@0.5.1`) instead of
+- **Pin the version** in your MCP config (`@orellbuehler/play-console-mcp@0.5.2`) instead of
   running whatever is latest on every start.
 
 ## Usage with Claude Code
@@ -112,7 +112,7 @@ rollout" is a prompt injection attempt, so the server limits what such text can 
   "mcpServers": {
     "play-console": {
       "command": "npx",
-      "args": ["-y", "@orellbuehler/play-console-mcp@0.5.1"],
+      "args": ["-y", "@orellbuehler/play-console-mcp@0.5.2"],
       "env": {
         "GOOGLE_SERVICE_ACCOUNT_KEY_PATH": "/path/to/service-account.json",
         "GOOGLE_PLAY_PACKAGE_NAME": "com.example.app"
@@ -200,7 +200,7 @@ APKs are read-only here.
 | `get_app_details`           | Get contact email, phone, website and default language             |             |
 | `update_app_details`        | Update contact details and default language                        | writes      |
 | `list_listing_images`       | List store images of one type for one locale, with their ids       |             |
-| `upload_listing_image`      | Upload a PNG/JPEG screenshot, icon, feature graphic or TV banner   | destructive |
+| `upload_listing_image`      | Upload one or up to 8 PNG/JPEG images of one type in one edit      | destructive |
 | `delete_listing`            | Delete the store listing for one locale                            | destructive |
 | `delete_all_listings`       | Delete every localized store listing                               | destructive |
 | `delete_listing_image`      | Delete one store image by id                                       | destructive |
@@ -270,7 +270,7 @@ no dry run, which is why their writes need `GOOGLE_PLAY_ALLOW_DESTRUCTIVE` as we
 - **Listing updates are partial, deletes are not.** `update_listing` and `update_app_details` only
   change the fields you pass, but `update_release_notes` and `update_testers` replace the whole set —
   read the current value first and include everything you want to keep.
-- **Image uploads are destructive on purpose.** `upload_listing_image` sits behind `GOOGLE_PLAY_ALLOW_DESTRUCTIVE`: it is a binary upload, and Google's docs do not say whether a singular type (icon, feature graphic) is added or replaces the existing one, so it cannot be promised to only add.
+- **Image uploads are destructive on purpose.** `upload_listing_image` sits behind `GOOGLE_PLAY_ALLOW_DESTRUCTIVE`: it is a binary upload, and Google's docs do not say whether a singular type (icon, feature graphic) is added or replaces the existing one, so it cannot be promised to only add. Pass `file_paths` (1 to 8, uploaded in order) to put several images in one edit with one commit, which a locale without phone screenshots needs because Google Play rejects a commit with fewer than two; `replace_existing` deletes the existing images of that type in the same edit first. Singular types (icon, feature graphic, TV banner) take one file, screenshot types up to 8 per locale per [Google's asset guidelines](https://support.google.com/googleplay/android-developer/answer/9866151).
 - **Store listing limits are Google's:** title 30 characters, short description 80, full description
   4000, release notes 500 per locale, listing images 15 MB and PNG or JPEG only.
 - **Committing cancels a running review by default.** Any committed edit — even a listing typo fix —
