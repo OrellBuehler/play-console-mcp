@@ -40,7 +40,7 @@ users and per-app permissions of the developer account.
 claude mcp add play-console \
   -e GOOGLE_SERVICE_ACCOUNT_KEY_PATH=/path/to/service-account.json \
   -e GOOGLE_PLAY_PACKAGE_NAME=com.example.app \
-  -- npx -y @orellbuehler/play-console-mcp@0.5.2
+  -- npx -y @orellbuehler/play-console-mcp@0.6.0
 ```
 
 The `-e` flags must come **before** the `--` separator; anything after `--` is passed to the server
@@ -115,7 +115,7 @@ rollout" is a prompt injection attempt, so the server limits what such text can 
   for write tools.
 - **Scope the service account.** Grant it only the Play Console permissions for the tools you use;
   a key with **View app information** only cannot write whatever the flags say.
-- **Pin the version** in your MCP config (`@orellbuehler/play-console-mcp@0.5.2`) instead of
+- **Pin the version** in your MCP config (`@orellbuehler/play-console-mcp@0.6.0`) instead of
   running whatever is latest on every start.
 
 ## Usage with Claude Code
@@ -125,7 +125,7 @@ rollout" is a prompt injection attempt, so the server limits what such text can 
   "mcpServers": {
     "play-console": {
       "command": "npx",
-      "args": ["-y", "@orellbuehler/play-console-mcp@0.5.2"],
+      "args": ["-y", "@orellbuehler/play-console-mcp@0.6.0"],
       "env": {
         "GOOGLE_SERVICE_ACCOUNT_KEY_PATH": "/path/to/service-account.json",
         "GOOGLE_PLAY_PACKAGE_NAME": "com.example.app"

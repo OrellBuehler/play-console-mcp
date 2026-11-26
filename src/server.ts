@@ -21,7 +21,7 @@ export function createServer(
   allowDestructive = false,
   developerId?: string,
 ): McpServer {
-  const server = new McpServer({ name: "play-console-mcp", version: "0.5.2" });
+  const server = new McpServer({ name: "play-console-mcp", version: "0.6.0" });
   registerReviewTools(server, client, packageName, allowWrites);
   registerReleaseTools(server, client, packageName, allowWrites);
   registerListingTools(server, client, packageName, allowWrites, allowDestructive);
