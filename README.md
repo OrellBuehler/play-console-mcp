@@ -13,16 +13,22 @@ AI agents.
 Its focus is **managing user feedback and Android app releases** — reading and replying to Play
 Store reviews, uploading an app bundle and cutting a release from it, editing release notes, promoting a build
 from beta to production, steering a staged rollout, editing the store listing, rolling out an app
-recovery action, and checking crash, ANR, memory and battery vitals before and after a release.
+recovery action, and checking crash, ANR, memory and battery vitals before and after a release. It
+also covers **monetization and account access**: the subscription and one-time product catalog with
+its prices and offers, order and purchase lookups, refunds and subscription cancellations, and the
+users and per-app permissions of the developer account.
 
-> **What it deliberately does not do:** no APK, deobfuscation file or internal app sharing uploads
-> (app bundles only), no in-app product or subscription management, no user and permission management, and no Android device management
-> (that is the unrelated [Android Management API](https://developers.google.com/android/management)).
+> **What it deliberately does not do:** no APK, deobfuscation file, expansion file or internal app
+> sharing uploads (app bundles only), no binary downloads (generated or system APKs), no calls that
+> only a billing backend makes (plan transitions, offer targeting, chargeback reviews, external
+> transaction reporting), no Cloud KMS app signing, and no Android device management (that is the
+> unrelated [Android Management API](https://developers.google.com/android/management)).
 
-> **The server is read-only by default.** Write tools (review replies, release, rollout, tester and
-> listing changes) are only registered when `GOOGLE_PLAY_ALLOW_WRITES` is set. Deletes, bundle and image uploads,
-> app recovery writes and the Data safety update additionally need `GOOGLE_PLAY_ALLOW_DESTRUCTIVE` — see
-> [Configuration](#configuration) and [Security](#security).
+> **The server is read-only by default.** Write tools (review replies, release, rollout, tester,
+> listing and product catalog changes) are only registered when `GOOGLE_PLAY_ALLOW_WRITES` is set.
+> Deletes, bundle and image uploads, app recovery writes, the Data safety update, refunds and other
+> purchase changes, and user and permission changes additionally need
+> `GOOGLE_PLAY_ALLOW_DESTRUCTIVE` — see [Configuration](#configuration) and [Security](#security).
 
 > **Breaking change in 0.4.0:** writes used to be registered unconditionally. If you rely on
 > `reply_to_review`, the release tools or the listing updates, add `GOOGLE_PLAY_ALLOW_WRITES=true` to
@@ -64,6 +70,10 @@ only picked up when you choose to update.
    - **Edit store listing, pricing & distribution** (for `update_listing`, `update_app_details` and
      the listing image tools)
    - **Manage policy declarations** (for `update_data_safety`)
+   - **Manage store presence** (for the subscription and one-time product catalog writes)
+   - **View financial data** (for `get_orders`, the purchase lookups and `list_voided_purchases`)
+     and **Manage orders and subscriptions** (for `refund_order` and the other purchase writes)
+   - **Admin (all permissions)** on the account (for `list_users` and the user and grant tools)
 6. Point `GOOGLE_SERVICE_ACCOUNT_KEY_PATH` at the downloaded JSON file.
 
 You no longer need to link your Play developer account to a Google Cloud project to use the API.
@@ -75,13 +85,14 @@ Permission changes can take a few minutes to propagate. Until they do, calls fai
 
 ## Configuration
 
-| Variable                          | Required | Description                                                                                                                                                                    |
-| --------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `GOOGLE_SERVICE_ACCOUNT_KEY_PATH` | one of   | Path to the downloaded service account JSON key                                                                                                                                |
-| `GOOGLE_SERVICE_ACCOUNT_KEY`      | one of   | The service account JSON key inline, as a raw JSON string                                                                                                                      |
-| `GOOGLE_PLAY_PACKAGE_NAME`        | no       | Default app package name, so tools can omit `package_name`                                                                                                                     |
-| `GOOGLE_PLAY_ALLOW_WRITES`        | no       | Set to `1`, `true` or `yes` to register the write tools. Off by default: the server is read-only                                                                               |
-| `GOOGLE_PLAY_ALLOW_DESTRUCTIVE`   | no       | Set to `1`, `true` or `yes` to also register the delete, bundle and image upload, recovery write and Data safety tools. Has no effect unless `GOOGLE_PLAY_ALLOW_WRITES` is set |
+| Variable                          | Required | Description                                                                                                                                                                                                     |
+| --------------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GOOGLE_SERVICE_ACCOUNT_KEY_PATH` | one of   | Path to the downloaded service account JSON key                                                                                                                                                                 |
+| `GOOGLE_SERVICE_ACCOUNT_KEY`      | one of   | The service account JSON key inline, as a raw JSON string                                                                                                                                                       |
+| `GOOGLE_PLAY_PACKAGE_NAME`        | no       | Default app package name, so tools can omit `package_name`                                                                                                                                                      |
+| `GOOGLE_PLAY_DEVELOPER_ID`        | no       | Default developer account ID for the user and grant tools, so they can omit `developer_id`. It is the number in the Play Console URL: `play.google.com/console/developers/<id>`                                 |
+| `GOOGLE_PLAY_ALLOW_WRITES`        | no       | Set to `1`, `true` or `yes` to register the write tools. Off by default: the server is read-only                                                                                                                |
+| `GOOGLE_PLAY_ALLOW_DESTRUCTIVE`   | no       | Set to `1`, `true` or `yes` to also register the delete, bundle and image upload, recovery write, Data safety, purchase write and user management tools. Has no effect unless `GOOGLE_PLAY_ALLOW_WRITES` is set |
 
 ## Security
 
@@ -92,12 +103,14 @@ rollout" is a prompt injection attempt, so the server limits what such text can 
 - **Read-only by default.** Without `GOOGLE_PLAY_ALLOW_WRITES` no tool can change anything in the
   Play Console. Leave it unset for review triage and vitals analysis, and enable it only in the
   sessions where you actually release or reply.
-- **Destructive tools need both flags.** Deletes, bundle and image uploads, app recovery writes and the Data
-  safety update are only registered when `GOOGLE_PLAY_ALLOW_WRITES` and `GOOGLE_PLAY_ALLOW_DESTRUCTIVE` are both set.
+- **Destructive tools need both flags.** Deletes, bundle and image uploads, app recovery writes, the Data
+  safety update, everything that moves money or changes a customer's purchase (refunds, revokes,
+  cancellations, price migrations) and every user and permission change are only registered when
+  `GOOGLE_PLAY_ALLOW_WRITES` and `GOOGLE_PLAY_ALLOW_DESTRUCTIVE` are both set.
 - **Tool annotations.** Every tool declares `readOnlyHint`, `destructiveHint`, `idempotentHint` and
   `openWorldHint`, so MCP clients can ask for confirmation before a write.
-- **Untrusted text is labelled.** `list_reviews`, `get_review`, `search_error_issues` and
-  `search_error_reports` say in their description that the returned text is untrusted and must not
+- **Untrusted text is labelled.** `list_reviews`, `get_review`, `get_subscription_purchase` (the
+  cancel survey answer), `search_error_issues` and `search_error_reports` say in their description that the returned text is untrusted and must not
   be followed as instructions. This is a hint to the model, not a guarantee — keep human approval on
   for write tools.
 - **Scope the service account.** Grant it only the Play Console permissions for the tools you use;
@@ -175,15 +188,16 @@ The **Opt-in** column of each table shows what a tool needs: `writes` means
 
 ### Artifacts
 
-| Tool                       | Description                                                                  | Opt-in      |
-| -------------------------- | ---------------------------------------------------------------------------- | ----------- |
-| `list_bundles`             | List uploaded app bundles with their version codes and hashes                |             |
-| `list_apks`                | List uploaded APKs with their version codes and hashes                       |             |
-| `list_generated_apks`      | List the APKs Play generated from a bundle, grouped by signing key           |             |
-| `get_expansion_file`       | Get the OBB expansion file attached to an APK version code (legacy APK-only) |             |
-| `list_device_tier_configs` | List the app's device tier configs (device groups, tiers, country sets)      |             |
-| `get_device_tier_config`   | Get one device tier config by id                                             |             |
-| `upload_bundle`            | Upload a local `.aab`, optionally releasing it on a track in the same edit   | destructive |
+| Tool                        | Description                                                                  | Opt-in      |
+| --------------------------- | ---------------------------------------------------------------------------- | ----------- |
+| `list_bundles`              | List uploaded app bundles with their version codes and hashes                |             |
+| `list_apks`                 | List uploaded APKs with their version codes and hashes                       |             |
+| `list_generated_apks`       | List the APKs Play generated from a bundle, grouped by signing key           |             |
+| `get_expansion_file`        | Get the OBB expansion file attached to an APK version code (legacy APK-only) |             |
+| `list_device_tier_configs`  | List the app's device tier configs (device groups, tiers, country sets)      |             |
+| `get_device_tier_config`    | Get one device tier config by id                                             |             |
+| `create_device_tier_config` | Create a device tier config (device groups, tiers, country sets)             | writes      |
+| `upload_bundle`             | Upload a local `.aab`, optionally releasing it on a track in the same edit   | destructive |
 
 `upload_bundle` reads the whole `.aab` into memory and sends it in one request with a 10 minute
 timeout. Without `track` it only uploads: pass the returned version code to `create_release`. With
@@ -228,6 +242,72 @@ also accept `changes_in_review_behavior`: Google's default (`CANCEL_IN_REVIEW_AN
 a review that is already running and submits everything together, while `ERROR_IF_IN_REVIEW` makes
 the commit fail instead. The app recovery and Data safety tools are outside that workflow and have
 no dry run, which is why their writes need `GOOGLE_PLAY_ALLOW_DESTRUCTIVE` as well.
+
+### Subscriptions
+
+| Tool                           | Description                                                              | Opt-in      |
+| ------------------------------ | ------------------------------------------------------------------------ | ----------- |
+| `list_subscriptions`           | List subscription products with listings, base plans and regional prices |             |
+| `get_subscription`             | Get one subscription product                                             |             |
+| `list_subscription_offers`     | List offers (trials, intro prices) of one base plan, product or the app  |             |
+| `get_subscription_offer`       | Get one subscription offer                                               |             |
+| `create_subscription`          | Create a subscription product with draft base plans                      | writes      |
+| `update_subscription`          | Update listings, tax settings or base plans, including prices            | writes      |
+| `set_base_plan_state`          | Activate or deactivate a base plan                                       | writes      |
+| `create_subscription_offer`    | Create a draft offer on a base plan                                      | writes      |
+| `update_subscription_offer`    | Update an offer's phases, targeting or availability                      | writes      |
+| `set_subscription_offer_state` | Activate or deactivate an offer                                          | writes      |
+| `migrate_base_plan_prices`     | Move existing subscribers from legacy prices to the current price        | destructive |
+| `delete_subscription`          | Delete a subscription that never had an active base plan                 | destructive |
+| `delete_base_plan`             | Delete a draft base plan                                                 | destructive |
+| `delete_subscription_offer`    | Delete a draft offer                                                     | destructive |
+
+### One-time products
+
+| Tool                               | Description                                                                    | Opt-in      |
+| ---------------------------------- | ------------------------------------------------------------------------------ | ----------- |
+| `list_one_time_products`           | List one-time products with listings, purchase options and regional prices     |             |
+| `get_one_time_product`             | Get one one-time product                                                       |             |
+| `list_one_time_product_offers`     | List offers (discounts, pre-orders) of one purchase option, product or app     |             |
+| `convert_region_prices`            | Convert one price into local prices for every region, with the regions version |             |
+| `update_one_time_product`          | Create or update a product's listings, tax settings or purchase options        | writes      |
+| `set_purchase_option_state`        | Activate or deactivate a purchase option                                       | writes      |
+| `update_one_time_product_offer`    | Create or update an offer on a purchase option                                 | writes      |
+| `set_one_time_product_offer_state` | Activate, deactivate or cancel an offer                                        | writes      |
+| `delete_one_time_product`          | Delete a one-time product with its purchase options and offers                 | destructive |
+| `delete_purchase_option`           | Delete a purchase option, optionally with its offers                           | destructive |
+| `delete_one_time_product_offer`    | Delete an offer                                                                | destructive |
+
+### Orders and purchases
+
+| Tool                                | Description                                                             | Opt-in      |
+| ----------------------------------- | ----------------------------------------------------------------------- | ----------- |
+| `get_orders`                        | Look up orders by order ID, with line items, amounts and refund history |             |
+| `get_product_purchase`              | Status of a one-time product purchase by purchase token                 |             |
+| `get_subscription_purchase`         | Status of a subscription purchase by purchase token                     |             |
+| `list_voided_purchases`             | Purchases cancelled, refunded or charged back in the last 30 days       |             |
+| `refund_order`                      | Refund an order in full, optionally revoking the item                   | destructive |
+| `cancel_subscription_purchase`      | Stop a user's subscription from renewing                                | destructive |
+| `revoke_subscription_purchase`      | End a user's subscription now with a full or prorated refund            | destructive |
+| `defer_subscription_purchase`       | Push back a user's next renewal, with a dry-run option                  | destructive |
+| `acknowledge_product_purchase`      | Acknowledge a one-time product purchase                                 | destructive |
+| `consume_product_purchase`          | Consume a one-time product purchase so it can be bought again           | destructive |
+| `acknowledge_subscription_purchase` | Acknowledge a subscription purchase                                     | destructive |
+
+### Users and permissions
+
+These work on the developer account, not on one app, and take `developer_id` (or
+`GOOGLE_PLAY_DEVELOPER_ID`).
+
+| Tool           | Description                                                              | Opt-in      |
+| -------------- | ------------------------------------------------------------------------ | ----------- |
+| `list_users`   | List the account's users with their account-wide and per-app permissions |             |
+| `create_user`  | Invite a user with account-wide permissions                              | destructive |
+| `update_user`  | Change a user's account-wide permissions or access expiry                | destructive |
+| `delete_user`  | Remove a user and all their access                                       | destructive |
+| `create_grant` | Give a user permissions on one app                                       | destructive |
+| `update_grant` | Replace a user's permissions on one app                                  | destructive |
+| `delete_grant` | Remove a user's permissions on one app                                   | destructive |
 
 ### Vitals
 
@@ -282,6 +362,18 @@ no dry run, which is why their writes need `GOOGLE_PLAY_ALLOW_DESTRUCTIVE` as we
   from Play Console > App content > Data safety first and keep it as a backup.
 - **App recovery actions are user-visible and have no dry run.** `deploy_recovery_action` pushes a
   remote in-app update immediately; confirm the targeting with `list_recovery_actions` first.
+- **Catalog changes are live at once.** Subscriptions, one-time products and their offers are not
+  part of the edits workflow: there is no `validate_only`, and a price change on an active base plan
+  or purchase option reaches buyers immediately. The update tools replace every top-level field
+  named in `update_mask` as a whole, so read the product first and send the full edited field back.
+  Every catalog write needs a `regions_version`, which `convert_region_prices` returns.
+- **Orders cannot be listed or searched.** `get_orders` needs order IDs and the purchase tools need
+  purchase tokens — from a customer's receipt, your backend or `list_voided_purchases`. Sales and
+  revenue reports are only available as Cloud Storage exports, not through any API.
+- **Refunds and revokes are final.** `refund_order` and `revoke_subscription_purchase` return money
+  to the customer and cannot be reversed.
+- **Legacy in-app products** (`inappproducts`) are not exposed separately: Google serves managed
+  products through the one-time products API.
 - **Vitals data lags.** Android vitals metrics are aggregated daily in `America/Los_Angeles` and are
   typically about a day behind — `get_vitals_freshness` reports the latest date each metric set
   actually has. Slices with too few users are omitted by Google. Only crash rate, ANR rate and error

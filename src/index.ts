@@ -9,6 +9,7 @@ const server = createServer(
   config.packageName,
   config.allowWrites,
   config.allowDestructive,
+  config.developerId,
 );
 const transport = new StdioServerTransport();
 try {

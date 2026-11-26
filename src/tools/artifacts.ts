@@ -5,7 +5,15 @@ import { extname } from "node:path";
 import type { GooglePlayClient } from "../play/client.js";
 import { ok, err, resolvePackage } from "../play/format.js";
 import { readWithEdit, withEdit } from "../play/edits.js";
-import { packageArg, writeShape, releaseNotesSchema, readOnly, destructive } from "./shared.js";
+import {
+  packageArg,
+  writeShape,
+  releaseNotesSchema,
+  resourceArg,
+  readOnly,
+  additive,
+  destructive,
+} from "./shared.js";
 
 const BUNDLE_UPLOAD_TIMEOUT_MS = 10 * 60 * 1000;
 
@@ -153,7 +161,38 @@ export function registerArtifactTools(
     },
   );
 
-  if (!allowWrites || !allowDestructive) return;
+  if (!allowWrites) return;
+
+  server.tool(
+    "create_device_tier_config",
+    "Create a new device tier config for an app, defining the device groups, tiers and country sets that Play Asset Delivery can target. The API cannot change or delete a config: to change one, create a new config and reference it from the next bundle upload (device_tier_config_id of upload_bundle, or 'LATEST'). Start from an existing config read with get_device_tier_config. Not part of the edits workflow, so there is no validate_only dry run. Returns the created config with its deviceTierConfigId.",
+    {
+      config: resourceArg(
+        "The DeviceTierConfig in Google's format, as get_device_tier_config returns it without deviceTierConfigId: deviceGroups [{name:'high_ram',deviceSelectors:[{deviceRam:{minBytes:'8000000000'}}]}], deviceTierSet {deviceTiers:[{level:1,deviceGroupNames:['high_ram']}]} and optionally userCountrySets [{name:'latam',countryCodes:['BR','MX']}]",
+      ),
+      allow_unknown_devices: z
+        .boolean()
+        .optional()
+        .describe("Accept device IDs in the selectors that Play's device catalog does not know"),
+      package_name: packageArg,
+    },
+    additive,
+    async ({ config, allow_unknown_devices, package_name }) => {
+      try {
+        const pkg = resolvePackage(package_name, defaultPackageName);
+        const res = await client.post(
+          `/applications/${encodeURIComponent(pkg)}/deviceTierConfigs`,
+          config,
+          { allowUnknownDevices: allow_unknown_devices },
+        );
+        return ok(res);
+      } catch (e) {
+        return err(e);
+      }
+    },
+  );
+
+  if (!allowDestructive) return;
 
   server.tool(
     "upload_bundle",

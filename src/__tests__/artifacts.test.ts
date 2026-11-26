@@ -263,9 +263,33 @@ describe("artifact tools", () => {
       "get_device_tier_config",
     ];
     expect([...collect("com.acme.app", false, false).keys()]).toEqual(read);
-    expect([...collect("com.acme.app", true, false).keys()]).toEqual(read);
+    expect([...collect("com.acme.app", true, false).keys()]).toEqual([
+      ...read,
+      "create_device_tier_config",
+    ]);
     expect([...collect("com.acme.app", false, true).keys()]).toEqual(read);
-    expect([...collect("com.acme.app", true, true).keys()]).toEqual([...read, "upload_bundle"]);
+    expect([...collect("com.acme.app", true, true).keys()]).toEqual([
+      ...read,
+      "create_device_tier_config",
+      "upload_bundle",
+    ]);
+  });
+
+  it("create_device_tier_config posts the config as given", async () => {
+    mockFetch.mockResolvedValueOnce(resp({ deviceTierConfigId: "9" }));
+    const config = { deviceGroups: [{ name: "high_ram", deviceSelectors: [] }] };
+    const res = await tools.get("create_device_tier_config")!({
+      config,
+      allow_unknown_devices: true,
+    });
+    expect(calls(mockFetch)).toEqual([
+      "POST /androidpublisher/v3/applications/com.acme.app/deviceTierConfigs",
+    ]);
+    expect(new URL(mockFetch.mock.calls[0][0]).searchParams.get("allowUnknownDevices")).toBe(
+      "true",
+    );
+    expect(JSON.parse(mockFetch.mock.calls[0][1].body)).toEqual(config);
+    expect(JSON.parse(res.content[0].text!).deviceTierConfigId).toBe("9");
   });
 
   it("errors when no package name is available", async () => {
