@@ -37,6 +37,13 @@ describe("config", () => {
     expect(config.transport).toBe("stdio");
   });
 
+  it("reads an optional default developer account id", async () => {
+    vi.stubEnv("GOOGLE_SERVICE_ACCOUNT_KEY_PATH", "/tmp/service-account.json");
+    vi.stubEnv("GOOGLE_PLAY_DEVELOPER_ID", " 123 ");
+    const { config } = await import("../config.js");
+    expect(config.developerId).toBe("123");
+  });
+
   it("leaves the package name undefined when unset", async () => {
     vi.stubEnv("GOOGLE_SERVICE_ACCOUNT_KEY_PATH", "/tmp/service-account.json");
     const { config } = await import("../config.js");

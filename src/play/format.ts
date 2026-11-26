@@ -16,3 +16,13 @@ export function resolvePackage(packageName?: string, defaultPackageName?: string
   }
   return pkg;
 }
+
+export function resolveDeveloper(developerId?: string, defaultDeveloperId?: string): string {
+  const id = (developerId || "").trim() || (defaultDeveloperId || "").trim();
+  if (!id) {
+    throw new Error(
+      "No developer account ID given. Pass developer_id or set GOOGLE_PLAY_DEVELOPER_ID. It is the number in the Play Console URL: play.google.com/console/developers/<id>.",
+    );
+  }
+  return id;
+}
